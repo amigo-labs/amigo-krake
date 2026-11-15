@@ -38,6 +38,50 @@ sind gemergt.
       neben dem Binary und `<asset>.sha256` hochladen (der Self-Updater
       erwartet sie und lehnt sonst das Update ab).
 
+### Schlüssel für den Release-Build setzen (Schritt für Schritt)
+
+Stand 2026-11-15: der Release-Build für 0.1.1 (Lauf 43749588193) scheitert in
+allen CLI-Jobs an „Require pinned signing keys“, weil die Repository-Variable
+`AMIGO_REGISTRY_PUBKEY_HEX` leer ist. Der Workflow liest die Werte unter den
+`AMIGO_*`-Namen und reicht sie als `KRAKE_*` an den Build weiter.
+
+Gibt es aus dem 0.1.0-Release schon Schlüsselpaare, dieselben wieder
+verwenden: jede ausgelieferte Version vertraut nur dem Schlüssel, der in sie
+eingebaut wurde.
+
+1. Zwei Ed25519-Schlüsselpaare lokal und offline erzeugen, eines für
+   Updates, eines für die Plugin-Registry:
+
+   ```sh
+   openssl genpkey -algorithm ed25519 -out update-key.pem
+   openssl genpkey -algorithm ed25519 -out registry-key.pem
+   # privater Seed (64 Hex-Zeichen):
+   openssl pkey -in update-key.pem -outform DER | tail -c 32 | od -An -tx1 -v | tr -d ' \n'
+   # öffentlicher Schlüssel (64 Hex-Zeichen):
+   openssl pkey -in update-key.pem -pubout -outform DER | tail -c 32 | od -An -tx1 -v | tr -d ' \n'
+   openssl pkey -in registry-key.pem -pubout -outform DER | tail -c 32 | od -An -tx1 -v | tr -d ' \n'
+   ```
+
+2. In GitHub unter Settings → Secrets and variables → Actions eintragen:
+
+   | Art | Name | Wert |
+   | --- | ---- | ---- |
+   | Variable | `AMIGO_UPDATE_PUBKEY_HEX` | öffentlicher Schlüssel aus `update-key.pem` |
+   | Variable | `AMIGO_REGISTRY_PUBKEY_HEX` | öffentlicher Schlüssel aus `registry-key.pem` |
+   | Secret | `AMIGO_UPDATE_SIGNING_KEY` | privater Seed aus `update-key.pem` |
+
+   Der private Registry-Schlüssel kommt nicht nach GitHub; mit ihm wird der
+   Registry-Index signiert.
+
+3. Beide `.pem`-Dateien offline sichern und nie committen. Geht ein privater
+   Schlüssel verloren, nehmen bestehende Installationen keine Updates mehr an.
+
+4. Den Release-Build neu starten: den fehlgeschlagenen Lauf wiederholen oder
+   `release-build.yml` von Hand auslösen (`tag_name`, `version`).
+
+Die Tauri-Installer brauchen zusätzlich `TAURI_SIGNING_PRIVATE_KEY` und
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (oben).
+
 ## Accounts & Test-Fixtures (für Verifikation nötig)
 
 - [ ] Bezahlte Test-Accounts für Premiumize und AllDebrid besorgen, um die
