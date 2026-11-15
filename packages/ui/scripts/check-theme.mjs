@@ -5,7 +5,8 @@
  *
  *   AC-02  every Krake property listed below resolves, in the dark and in the
  *          light palette, to the value of its token in the generated theme
- *          file, and Krake's own stylesheets hold no colour literal;
+ *          file, and Krake's own stylesheets and components hold no colour
+ *          literal, no shadow and no radius step beside the theme's;
  *   AC-03  no neon effect is left in `web-ui/src` and `packages/ui/src`
  *          (`effects.mjs`).
  *
@@ -164,6 +165,52 @@ function checkColourLiterals(files) {
   return n;
 }
 
+/* ---- AC-02: components take colours, shadows and radii from the tokens --- */
+
+/** Tailwind utilities that bring a colour, shadow or radius step of their own. */
+const OWN_UTILITY =
+  /(?<![\w-])(?:(?:bg|text|border|ring|fill|stroke)-(?:black|white)(?:\/\d+)?|shadow-(?:sm|md|lg|xl|2xl|inner)|rounded(?:-[a-z]{1,2})?-(?:2xl|3xl))(?![\w-])/;
+
+/**
+ * The literals that are not theme colours (spec, Decisions): the black scrim
+ * behind an overlay, and the white paper under a captcha image.
+ */
+const EXEMPT = [
+  { file: "packages/ui/src/components/Dialog.svelte", text: "rgb(0 0 0 / 60%)" },
+  { file: "web-ui/src/components/DropZone.svelte", text: "rgb(0 0 0 / 60%)" },
+  { file: "web-ui/src/components/CommandPalette.svelte", text: "bg-black/60" },
+  { file: "web-ui/src/components/CaptchaDialog.svelte", text: null },
+];
+
+const isExempt = (file, hit) =>
+  EXEMPT.some((e) => e.file === rel(file) && (e.text === null || e.text.startsWith(hit) || hit.startsWith(e.text)));
+
+function checkComponents(files) {
+  let n = 0;
+  for (const file of files) {
+    if (!file.endsWith(".svelte")) continue;
+    n++;
+    const source = readFileSync(file, "utf8");
+    const styleStart = source.search(/<style[\s>]/);
+    const lines = source.split("\n");
+    let offset = 0;
+    lines.forEach((line, i) => {
+      const inStyle = styleStart >= 0 && offset >= styleStart;
+      offset += line.length + 1;
+      const utility = OWN_UTILITY.exec(line);
+      if (utility && !isExempt(file, utility[0])) {
+        failures.push(`${rel(file)}:${i + 1}  utility "${utility[0]}" brings its own colour, shadow or radius — use the tokens\n    ${line.trim()}`);
+      }
+      if (!inStyle) return;
+      const m = COLOUR_LITERAL.exec(stripCssComments(line));
+      if (m && !isExempt(file, line.slice(m.index).trim().replace(/;$/, ""))) {
+        failures.push(`${rel(file)}:${i + 1}  colour literal "${m[0]}" — colours come from the theme files\n    ${line.trim()}`);
+      }
+    });
+  }
+  return n;
+}
+
 /* ---- AC-03: no neon effect ------------------------------------------------ */
 
 function checkNeon(files) {
@@ -185,6 +232,7 @@ selfTest();
 const files = SCAN_DIRS.flatMap(walk).sort();
 const aliasChecks = checkAliases();
 const sheets = checkColourLiterals(files);
+const components = checkComponents(files);
 const scanned = checkNeon(files);
 
 if (failures.length) {
@@ -196,5 +244,5 @@ if (failures.length) {
 
 console.log(
   `theme: ${aliasChecks} alias checks passed (${THEMES.length} palettes), ` +
-  `${sheets} stylesheets without a colour literal, ${scanned} files without a neon effect`,
+  `${sheets} stylesheets and ${components} components without a colour, shadow or radius of their own, ${scanned} files without a neon effect`,
 );

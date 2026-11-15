@@ -97,7 +97,7 @@
     aria-hidden="true"
   >
     <div
-      class="rounded-3xl border-2 border-dashed p-8 sm:p-16 flex flex-col items-center gap-4 drop-bounce text-center"
+      class="rounded-xl border-2 border-dashed p-8 sm:p-16 flex flex-col items-center gap-4 drop-bounce text-center"
       style="border-color: var(--accent); background: var(--bg-surface)"
     >
       <img src="/icon.svg" alt="" width="64" height="64" class="opacity-60" />
