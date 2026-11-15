@@ -88,20 +88,42 @@ Terms. **Theme files**: `tokens.css`, `components.css` and `theme.json`, written
 
 | AC    | Test | Status | Commit |
 | ----- | ---- | ------ | ------ |
-| AC-01 |      | open   |        |
-| AC-02 |      | open   |        |
-| AC-03 |      | open   |        |
-| AC-04 |      | open   |        |
-| AC-05 |      | open   |        |
-| AC-06 |      | open   |        |
-| AC-07 |      | open   |        |
-| AC-08 |      | open   |        |
-| AC-09 |      | open   |        |
-| AC-10 |      | open   |        |
-| AC-11 |      | open   |        |
-| AC-12 |      | open   |        |
-| AC-13 |      | open   |        |
+| AC-01 | `.github/workflows/site-data.yml` passes `theme-dir: packages/ui/src/theme` to the website's `validate-project` check (CI: site-data); locally `node scripts/theme.ts <krake>/docs/site/project.yml --out <krake>/packages/ui/src/theme --check` on website `main` | built | |
+| AC-02 | `packages/ui/scripts/check-theme.mjs` (`checkAliases`: 32 properties in 2 palettes; `checkColourLiterals`: `tokens.css`, `app.css`), run by `pnpm --filter @amigo-labs/krake-ui check` | built | |
+| AC-03 | `packages/ui/scripts/check-theme.mjs` (`checkNeon` with `effects.mjs`, self-test of the glow rule) and `scripts/ui-lint.mjs` (`no-neon-name`, `no-glow-shadow`) | built | |
+| AC-04 | `web-ui/test/theme.test.ts`: "deletes the Neon intensity an earlier version stored", "Settings ▸ Appearance offers the three choices and no intensity setting", "has no string of the removed intensity setting" | built | |
+| AC-05 | `web-ui/test/theme.test.ts`: "is dark with nothing stored, also on a light system", "falls back to dark for nothing stored and for an unknown value" | built | |
+| AC-06 | `web-ui/test/theme.test.ts`: "keeps a choice an earlier version stored" | built | |
+| AC-07 | `web-ui/test/theme.test.ts`: "applies and stores a pick at once, and starts in it after a reload" | built | |
+| AC-08 | `web-ui/test/theme.test.ts`: "follows the system preference under System while the page is open", "follows the system under System", "ignores the system preference under Dark and Light" | built | |
+| AC-09 | `web-ui/test/theme.test.ts`: "toggles to the palette opposite to the active one, also from System", "is the palette opposite to the active one" | built | |
+| AC-10 | `web-ui/test/theme.test.ts`: "starts dark on an unknown stored value and keeps working", "starts dark and still applies a pick when storage throws or is missing", "works without a document, a media query or storage" | built | |
+| AC-11 | `packages/ui/scripts/check-contrast.mjs` over `tokens.spec.json` (66 assertions, 2 palettes), run by `pnpm --filter @amigo-labs/krake-ui check` | built | |
+| AC-12 | `web-ui/test/theme.test.ts`: "keeps theme-color on the active background", "index.html starts in the dark palette with the dark background as theme-color", "the PWA manifest carries the dark background" | built | |
+| AC-13 | `web-ui/test/theme.test.ts`: "names the three choices in English and German", "has no string of the removed intensity setting" | built | |
 | AC-14 |      | open   |        |
 | AC-15 |      | open   |        |
 
 ## Decisions
+
+Taken while building, without asking (spec-build):
+
+- **Red runs** (2026-11-15, before the implementation):
+  - `pnpm --filter @amigo-labs/krake-web-ui test` — `test/theme.test.ts` failed with "Cannot find module '../src/lib/theme'" (1 failed suite, 56 older tests passed).
+  - `node packages/ui/scripts/check-theme.mjs` — exit 1, 259 problems: 51 alias mismatches (first: `dark: --bg-deep is "#1e1e1e", the token bg is "#15161a"`), the `:root.light` palette rule, 42 colour literals in `tokens.css`, 131 `no-neon-name` and 34 `no-glow-shadow` findings.
+  - `node packages/ui/scripts/check-contrast.mjs` with the raised `tokens.spec.json` — exit 1, 6 of 60 assertions: `--text-muted #8f8f8f on --bg-surface-2 #2d2d2d = 4.26 (need 4.50)`, the same on `--hover-bg` (4.34), `--border-strong` undefined; each in both palettes.
+  - `node scripts/ui-lint.mjs` with the new ban — exit 1, 165 problems (first: `packages/ui/src/components/Button.svelte:151 [no-neon-name]`).
+- **AC-01 cannot go red locally**: the Site data job is CI-only; its first run on the pull request is the proof. Locally the generator's `--check` on a pristine copy of website `main` reports "up to date".
+- **What counts as a glow shadow in the checks**: a `box-shadow`, `text-shadow` or `drop-shadow()` layer that has a blur and an accent or status colour (or `currentcolor`), or a shadow given as one custom property other than `--elev-0..3`. Unblurred shapes stay: the 3px selected-edge bar (`inset 3px 0 0 var(--accent)`), the 2px ring around the sidebar logo, the inset focus ring of `SegmentedControl` — they are edges, not shine, and the shared theme names the selected-edge bar as a role of `accent`.
+- **Former neon names the lint bans**: any identifier containing `neon`, `glow`, `scanline` or `flicker`, and `applyIntensity`; `intensity` alone is too common a word. Comments are not scanned. One exception carries `ui-lint-disable-next-line no-neon-name`: the storage key `neon-intensity` in `web-ui/src/lib/theme.ts`, which AC-04 needs to delete.
+- **The scan for colour literals covers Krake's stylesheets** (`packages/ui/src/tokens.css`, `web-ui/src/app.css`). Three literals in components stay as they were, because they are not theme colours: the black scrim behind `Dialog` and `DropZone` (`rgb(0 0 0 / 60%)`), the white paper and its dark error text under a captcha image (`CaptchaDialog`, already exempt from `no-raw-hex`), and the red badge drawn into the favicon canvas (`stores.ts`). A shared scrim token would have to be added in amigo-labs/website.
+- **`--radius-xl` is `radius-lg`**: the shared scale ends at `lg` (12px). Tailwind's `rounded-xl` and the `Dialog` panel used 16px; they now take 12px rather than keeping a fourth step of Krake's own.
+- **`--hover-bg` is the opaque `hover` token** (AC-02), no longer an 8 % accent tint; a hovered row is neutral and the accent marks only what is active or selected.
+- **`tokens.spec.json`**: `--text-muted` is a 4.5 text pair on `--bg-deep`, `--bg-surface`, `--bg-surface-2` and `--hover-bg`. New: `--border-strong` (the theme's `border-strong`) at 3.0 on the three surfaces as the outline of a control; `Field` inputs and the `Toggle` rail now use it. The hairline `--border-color` guard went from 1.4 to 1.3: the shared `border` is 1.37:1 on `surface` in both palettes and is a decorative separator by the theme's definition (`theme/README.md`), so the old threshold could only be met by a colour of Krake's own.
+- **Spacing, `--ease-out`, `--dur-fast` and `--dur-base` are aliases of the theme's tokens too** (same values as before); z-index, the font-size steps, `--ease-out-expo`, `--ease-spring` and `--dur-slow` stay Krake's.
+- **The progress shimmer mixes `--accent-solid` with `--text-primary`** instead of the literal `white`, so the highlight is lighter in dark and darker in light.
+- **Replacements for the glow**: `.neon-card` became `.outline-card` (hairline border, `elev-1` on hover); `Card` lost its `neon` prop (one caller, `PairingModal`) and an interactive card lifts to `elev-1` on hover; a grabbed download row takes `elev-2`; the search trigger and the feedback link card take `--border-strong` on hover; active chips that mixed `--neon-primary` into transparent take `--accent-subtle`; the delete button's border in Settings ▸ Webhooks mixes `--danger`. The status pulse animates size and opacity (`status-pulse`); the error dot no longer flickers.
+- **`theme-color` is read from the stylesheet** (`getComputedStyle(root).getPropertyValue("--am-bg")`) after each change instead of repeating the two colours in TypeScript; if the stylesheet has no value yet, the meta keeps the dark `bg` of `index.html`. No inline script was added: the server's CSP is `script-src 'self'`, and the edge-case table accepts the dark ground before the app's script runs.
+- **Settings ▸ Appearance uses the `SegmentedControl` primitive** (a radiogroup with arrow keys) for Dark / Light / System instead of three hand-styled buttons; inline styles went from 208 to 205 (`scripts/ui-budget.json`).
+- **The header button's accessible name is translated** (`theme.switch_to_light` / `theme.switch_to_dark`, en + de); it was hard-coded English. The command palette keeps "Toggle light / dark", which does the same as the button.
+- **New public API for review**: `web-ui/src/lib/theme.ts` exports `ThemeChoice`, `Palette`, `THEME_CHOICES`, `parseThemeChoice`, `resolvePalette`, `toggledChoice`, `ThemeEnv`, `ThemeStore`, `createThemeStore`, `browserThemeEnv` and the store `theme` (with `theme.palette`); `stores.ts` no longer exports `theme`, `ThemeMode`, `neonIntensity`, `applyIntensity`, `getNeonLabel`, `NeonLevel`. `packages/ui`: the custom property `--border-strong`, the class `.outline-card`; removed: `Card`'s `neon` prop, `.neon-card`, `.neon-top-line`, `.neon-text-*`, every `--neon-*` property.
