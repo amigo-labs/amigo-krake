@@ -101,8 +101,8 @@ Terms. **Theme files**: `tokens.css`, `components.css` and `theme.json`, written
 | AC-11 | `packages/ui/scripts/check-contrast.mjs` over `tokens.spec.json` (66 assertions, 2 palettes), run by `pnpm --filter @amigo-labs/krake-ui check` | built | |
 | AC-12 | `web-ui/test/theme.test.ts`: "keeps theme-color on the active background", "index.html starts in the dark palette with the dark background as theme-color", "the PWA manifest carries the dark background" | built | |
 | AC-13 | `web-ui/test/theme.test.ts`: "names the three choices in English and German", "has no string of the removed intensity setting" | built | |
-| AC-14 |      | open   |        |
-| AC-15 |      | open   |        |
+| AC-14 | manual: the owner checked the rewritten `.impeccable.md` and the "Design System" section of `AGENTS.md` ("Krake und Sofarr sind ok"), 2026-11-15 | built |        |
+| AC-15 | manual: the owner checked both palettes on the Downloads, History, Plugins and Settings pages, the Add panel, the detail panel and the command palette ("Krake und Sofarr sind ok"), 2026-11-15 | built |        |
 
 ## Decisions
 
