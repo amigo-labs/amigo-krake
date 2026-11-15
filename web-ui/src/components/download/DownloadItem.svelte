@@ -298,7 +298,7 @@
 
   .dl-item.is-grabbed {
     border-color: var(--accent-ink);
-    box-shadow: var(--neon-glow-md);
+    box-shadow: var(--elev-2);
   }
 
   :global(.dl-item.drop-target-active) {

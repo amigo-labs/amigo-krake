@@ -325,13 +325,6 @@ const translations: Record<Locale, Record<string, string>> = {
     "history.completed": "Completed",
     "history.load_failed": "Failed to load history. Is the server running?",
 
-    // Neon intensity labels (also used in the command palette)
-    "intensity.off": "Off",
-    "intensity.low": "Low",
-    "intensity.mid": "Mid",
-    "intensity.high": "High",
-    "intensity.full": "Full",
-
     // Webhook form labels + toasts
     "webhook.name": "Name",
     "webhook.url": "URL",
@@ -395,7 +388,9 @@ const translations: Record<Locale, Record<string, string>> = {
     "settings.theme": "Theme",
     "theme.dark": "Dark",
     "theme.light": "Light",
-    "settings.neon_intensity": "Neon Intensity",
+    "theme.system": "System",
+    "theme.switch_to_light": "Switch to the light theme",
+    "theme.switch_to_dark": "Switch to the dark theme",
 
     // Settings — downloads
     "settings.downloads": "Downloads",
@@ -429,7 +424,6 @@ const translations: Record<Locale, Record<string, string>> = {
     "cmd.add_download": "Add download",
     "cmd.toggle_theme": "Toggle light / dark",
     "cmd.show_shortcuts": "Show keyboard shortcuts",
-    "cmd.set_intensity": "Neon intensity: {name}",
     "cmd.hint_open": "Open command palette",
 
     // Shortcuts
@@ -743,11 +737,6 @@ const translations: Record<Locale, Record<string, string>> = {
     "history.completed": "Abgeschlossen",
     "history.load_failed": "Verlauf konnte nicht geladen werden. Läuft der Server?",
 
-    "intensity.off": "Aus",
-    "intensity.low": "Niedrig",
-    "intensity.mid": "Mittel",
-    "intensity.high": "Hoch",
-    "intensity.full": "Voll",
 
     "webhook.name": "Name",
     "webhook.url": "URL",
@@ -806,7 +795,9 @@ const translations: Record<Locale, Record<string, string>> = {
     "settings.theme": "Design",
     "theme.dark": "Dunkel",
     "theme.light": "Hell",
-    "settings.neon_intensity": "Neon-Intensität",
+    "theme.system": "System",
+    "theme.switch_to_light": "Zum hellen Design wechseln",
+    "theme.switch_to_dark": "Zum dunklen Design wechseln",
 
     "settings.downloads": "Downloads",
     "settings.download_dir": "Download-Verzeichnis",
@@ -836,7 +827,6 @@ const translations: Record<Locale, Record<string, string>> = {
     "cmd.add_download": "Download hinzufügen",
     "cmd.toggle_theme": "Hell / Dunkel umschalten",
     "cmd.show_shortcuts": "Tastenkürzel anzeigen",
-    "cmd.set_intensity": "Neon-Intensität: {name}",
     "cmd.hint_open": "Befehlspalette öffnen",
 
     "shortcuts.title": "Tastenkürzel",

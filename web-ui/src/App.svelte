@@ -23,7 +23,6 @@
     type AppConfig,
   } from "./lib/api";
   import {
-    applyIntensity,
     ariaAnnouncement,
     closeSidePanel,
     crashReport,
@@ -31,7 +30,6 @@
     downloads,
     downloadsLoaded,
     features,
-    neonIntensity,
     openAddPanel,
     pendingCaptcha,
     protocolFilter,
@@ -41,7 +39,6 @@
     sidePanelMode,
     speedHistory,
     stats,
-    theme,
     updateDownloadProgress,
     updateDownloadStatus,
     wsConnected,
@@ -51,6 +48,7 @@
     type ProtocolFilter,
   } from "./lib/stores";
   import { locale, tr } from "./lib/i18n";
+  import { theme } from "./lib/theme";
   import { addToast } from "./lib/toast";
   import { interpretWsEvent } from "./lib/wsEvents";
   import { formatChord, registerBindings, startKeymap, type Binding } from "./lib/keymap";
@@ -70,6 +68,9 @@
   const loadSetup = () => import("./pages/Setup.svelte");
   const loadLogin = () => import("./pages/Login.svelte");
   import { authRequired, setupRequired } from "./lib/stores";
+
+  // The palette on screen (dark or light), for the header's theme button.
+  const palette = theme.palette;
   import { getSetupStatus, me } from "./lib/api";
 
   // --- Auth / setup bootstrap gate ---------------------------------------
@@ -143,15 +144,13 @@
       bootState = s;
     });
 
-    // Initialize theme + intensity
-    document.documentElement.classList.toggle("light", $theme === "light");
+    // The theme store (lib/theme) has applied the stored choice on import.
     // The accent used to be a user choice; drop what an older build stored.
     try {
       localStorage.removeItem("color-palette");
     } catch {
       // Storage can be unavailable (private mode); nothing to clean up then.
     }
-    applyIntensity($neonIntensity);
 
     handleShareTarget();
     loadData();
@@ -394,7 +393,7 @@
   <!-- Sidebar -->
   <aside
     aria-label="Navigation"
-    class="hidden lg:flex flex-col shrink-0 relative neon-top-line transition-all duration-200"
+    class="hidden lg:flex flex-col shrink-0 relative transition-all duration-200"
     style="width: {$sidebarCollapsed ? '56px' : '256px'}; background: var(--bg-surface); border-right: 1px solid var(--border-color)"
   >
     <!-- Logo -->
@@ -492,7 +491,7 @@
             onclick={() => { limitEnabled = !limitEnabled; saveBandwidthLimit(); }}
             class="text-[10px] font-semibold px-1.5 py-0.5 rounded"
             style={limitEnabled
-              ? "background: color-mix(in srgb, var(--neon-primary) 15%, transparent); color: var(--accent-ink)"
+              ? "background: var(--accent-subtle); color: var(--accent-ink)"
               : "background: var(--bg-surface-2); color: var(--text-secondary)"}
           >
             {limitEnabled ? "On" : "Off"}
@@ -547,7 +546,7 @@
           <div class="flex items-center gap-1.5">
             <span
               class="w-2 h-2 rounded-full shrink-0"
-              style="background: {$wsConnected ? 'var(--status-online)' : 'var(--status-error)'}; box-shadow: 0 0 4px {$wsConnected ? 'var(--status-online)' : 'var(--status-error)'}"
+              style="background: {$wsConnected ? 'var(--status-online)' : 'var(--status-error)'}"
               aria-hidden="true"
             ></span>
             <span class="text-[10px]" style="color: var(--text-secondary); font-family: var(--font-mono)">
@@ -564,8 +563,8 @@
               <Icon name="search" size={14} />
               <kbd class="text-[10px]" style="font-family: var(--font-mono)">{paletteKey}</kbd>
             </button>
-            <button onclick={() => theme.toggle()} class="icon-btn p-1.5 rounded-lg" style="color: var(--text-secondary)" aria-label={$theme === "dark" ? "Switch to Light mode" : "Switch to Dark mode"}>
-              <Icon name={$theme === "light" ? "moon" : "sun"} size={16} />
+            <button onclick={() => theme.toggle()} class="icon-btn p-1.5 rounded-lg" style="color: var(--text-secondary)" aria-label={tr($locale, $palette === "dark" ? "theme.switch_to_light" : "theme.switch_to_dark")}>
+              <Icon name={$palette === "light" ? "moon" : "sun"} size={16} />
             </button>
           </div>
         </div>
@@ -599,7 +598,7 @@
         <!-- Mobile brand (no sidebar on small screens) -->
         <img src="/favicon.svg" alt="" width="28" height="28" class="lg:hidden shrink-0" />
         <h2
-          class="text-lg md:text-xl font-semibold neon-flicker-text truncate"
+          class="text-lg md:text-xl font-semibold truncate"
           style="color: var(--text-primary)"
         >
           {pageTitle}

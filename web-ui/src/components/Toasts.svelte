@@ -65,7 +65,7 @@
       out:fly={{ x: 24, duration: dur(180), opacity: 0 }}
       animate:flip={flipConfig}
     >
-      <!-- Type glyph on a colour chip — the 10% neon pop + shape cue -->
+      <!-- Type glyph on a colour chip — the 10% accent pop + shape cue -->
       <div
         class="w-6 h-6 rounded-lg shrink-0 mt-0.5 flex items-center justify-center"
         style="color: {inkFor(toast.type)}; background: color-mix(in srgb, {inkFor(toast.type)} 14%, transparent)"

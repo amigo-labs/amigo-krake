@@ -203,7 +203,7 @@
   }
 
   .link-card:hover {
-    border-color: var(--neon-border-hover);
+    border-color: var(--border-strong);
     background: var(--hover-bg);
   }
 </style>
