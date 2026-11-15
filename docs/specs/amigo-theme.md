@@ -1,5 +1,5 @@
 ---
-status: todo
+status: implemented
 created: 2026-11-15
 size: L
 surfaces: [web-ui]
@@ -37,21 +37,21 @@ Terms. **Theme files**: `tokens.css`, `components.css` and `theme.json`, written
 
 ## Acceptance criteria
 
-- [ ] AC-01 (always, CI: site-data): The theme files in the repository are exactly what the website's theme command writes for Krake's `docs/site/project.yml`; a pull request in which they differ fails the Site data check.
-- [ ] AC-02 (always): In both palettes every colour, radius, shadow and font-stack property the web UI and the primitives use has the value of its token in the theme files: `--bg-deep` = `bg`, `--bg-surface` = `surface`, `--bg-surface-2` = `surface-raised`, `--hover-bg` = `hover`, `--text-primary` / `--text-secondary` / `--text-muted` = `text` / `text-secondary` / `text-muted`, `--border-color` = `border`, `--accent` / `--accent-ink` / `--accent-solid` / `--accent-subtle` / `--on-accent` and `--success` / `--warning` / `--danger` with their `-ink` forms = the token of the same name, `--status-online` / `--status-degraded` / `--status-error` = `success` / `warning` / `danger`, `--radius-xs` to `--radius-lg` and `--radius-full`, `--elev-1` to `--elev-3`, `--font-sans` and `--font-mono` = the token of the same name; Krake defines no colour of its own beside the theme files.
-- [ ] AC-03 (always): No neon effect remains: the stylesheets and components of `web-ui/src` and `packages/ui/src` define and use no glow shadow, no scanline overlay, no flicker animation and no neon property or class, and the UI lint fails a change that adds one of the former neon names or a shadow in an accent or status colour.
-- [ ] AC-04 (always): Settings ▸ Appearance has no Neon intensity setting, and a Neon intensity value an earlier version stored has no effect and is deleted at the next start where storage can be written.
-- [ ] AC-05 (state): While no theme choice is stored, the active palette is dark, whatever the system prefers.
-- [ ] AC-06 (state): While a theme choice an earlier version stored (`dark` or `light`) exists, the active palette is that one.
-- [ ] AC-07 (event): When the user picks Dark, Light or System in Settings ▸ Appearance, then the active palette is the one the choice resolves to as soon as the pick is handled (no reload), the choice is stored, and after a reload the UI's first render is in that palette with the choice selected.
-- [ ] AC-08 (state): While the theme choice is System, the active palette is light where the system prefers light and dark otherwise, and it follows a change of the system preference while the page is open.
-- [ ] AC-09 (event): When the user presses the palette button in the header, then the theme choice becomes the palette opposite to the active one (Light while dark is shown, Dark while light is shown), also coming from System, and an open Settings page shows the new choice selected. The button is a two-state switch; System is chosen in Settings.
-- [ ] AC-10 (error): If the stored theme choice is not one of `dark`, `light`, `system`, or storage cannot be read or written, then the active palette is dark at start, a pick still applies for the open page, and nothing throws.
-- [ ] AC-11 (always): The contrast check of `packages/ui` passes for every pair of `tokens.spec.json` in both palettes, computed from the theme files' values, with text pairs at 4.5:1 or more (including `text-muted`, which is body-safe in the shared theme) and control outlines and fills that carry meaning at 3:1 or more.
-- [ ] AC-12 (always): The page's `theme-color` and the PWA manifest's colours are the dark `bg` of the theme files, and while the active palette is light the page's `theme-color` is the light `bg`, also after the system preference changes under System; the manifest has one static colour and keeps the default palette's.
-- [ ] AC-13 (option): Where the UI language is German, the choices read "Dunkel", "Hell" and "System"; the English UI reads "Dark", "Light" and "System"; the strings of the removed setting are gone from both languages.
-- [ ] AC-14 (always, manual: documentation review): `.impeccable.md` and the "Design System" section of `AGENTS.md` describe the shared theme (no neon, one accent, Dark / Light / System), and `AGENTS.md` carries the decision.
-- [ ] AC-15 (state, manual: visual design): While either palette is active, the Downloads, History, Plugins and Settings pages, the Add panel, the detail panel and the command palette look complete at 1280 px and 390 px width: no missing border where a glow used to separate two surfaces, no unreadable text, no leftover neon effect.
+- [x] AC-01 (always, CI: site-data): The theme files in the repository are exactly what the website's theme command writes for Krake's `docs/site/project.yml`; a pull request in which they differ fails the Site data check.
+- [x] AC-02 (always): In both palettes every colour, radius, shadow and font-stack property the web UI and the primitives use has the value of its token in the theme files: `--bg-deep` = `bg`, `--bg-surface` = `surface`, `--bg-surface-2` = `surface-raised`, `--hover-bg` = `hover`, `--text-primary` / `--text-secondary` / `--text-muted` = `text` / `text-secondary` / `text-muted`, `--border-color` = `border`, `--accent` / `--accent-ink` / `--accent-solid` / `--accent-subtle` / `--on-accent` and `--success` / `--warning` / `--danger` with their `-ink` forms = the token of the same name, `--status-online` / `--status-degraded` / `--status-error` = `success` / `warning` / `danger`, `--radius-xs` to `--radius-lg` and `--radius-full`, `--elev-1` to `--elev-3`, `--font-sans` and `--font-mono` = the token of the same name; Krake defines no colour of its own beside the theme files.
+- [x] AC-03 (always): No neon effect remains: the stylesheets and components of `web-ui/src` and `packages/ui/src` define and use no glow shadow, no scanline overlay, no flicker animation and no neon property or class, and the UI lint fails a change that adds one of the former neon names or a shadow in an accent or status colour.
+- [x] AC-04 (always): Settings ▸ Appearance has no Neon intensity setting, and a Neon intensity value an earlier version stored has no effect and is deleted at the next start where storage can be written.
+- [x] AC-05 (state): While no theme choice is stored, the active palette is dark, whatever the system prefers.
+- [x] AC-06 (state): While a theme choice an earlier version stored (`dark` or `light`) exists, the active palette is that one.
+- [x] AC-07 (event): When the user picks Dark, Light or System in Settings ▸ Appearance, then the active palette is the one the choice resolves to as soon as the pick is handled (no reload), the choice is stored, and after a reload the UI's first render is in that palette with the choice selected.
+- [x] AC-08 (state): While the theme choice is System, the active palette is light where the system prefers light and dark otherwise, and it follows a change of the system preference while the page is open.
+- [x] AC-09 (event): When the user presses the palette button in the header, then the theme choice becomes the palette opposite to the active one (Light while dark is shown, Dark while light is shown), also coming from System, and an open Settings page shows the new choice selected. The button is a two-state switch; System is chosen in Settings.
+- [x] AC-10 (error): If the stored theme choice is not one of `dark`, `light`, `system`, or storage cannot be read or written, then the active palette is dark at start, a pick still applies for the open page, and nothing throws.
+- [x] AC-11 (always): The contrast check of `packages/ui` passes for every pair of `tokens.spec.json` in both palettes, computed from the theme files' values, with text pairs at 4.5:1 or more (including `text-muted`, which is body-safe in the shared theme) and control outlines and fills that carry meaning at 3:1 or more.
+- [x] AC-12 (always): The page's `theme-color` and the PWA manifest's colours are the dark `bg` of the theme files, and while the active palette is light the page's `theme-color` is the light `bg`, also after the system preference changes under System; the manifest has one static colour and keeps the default palette's.
+- [x] AC-13 (option): Where the UI language is German, the choices read "Dunkel", "Hell" and "System"; the English UI reads "Dark", "Light" and "System"; the strings of the removed setting are gone from both languages.
+- [x] AC-14 (always, manual: documentation review): `.impeccable.md` and the "Design System" section of `AGENTS.md` describe the shared theme (no neon, one accent, Dark / Light / System), and `AGENTS.md` carries the decision.
+- [x] AC-15 (state, manual: visual design): While either palette is active, the Downloads, History, Plugins and Settings pages, the Add panel, the detail panel and the command palette look complete at 1280 px and 390 px width: no missing border where a glow used to separate two surfaces, no unreadable text, no leftover neon effect.
 
 ## Technical notes
 
@@ -84,25 +84,34 @@ Terms. **Theme files**: `tokens.css`, `components.css` and `theme.json`, written
 
 ## Open questions
 
+## Summary
+
+> Completed: 2026-11-15
+
+- The web UI takes every colour, radius, shadow and font stack from the shared amigo theme: generated theme files in `packages/ui/src/theme/`, checked against the generator by the Site data workflow, with Krake's property names as aliases.
+- The neon effects and the Neon intensity setting are gone; `check-theme.mjs` and the UI lint reject glow shadows, the former neon names and colours, shadows or radius steps of Krake's own.
+- The theme choice is Dark (default), Light or System in Settings ▸ Appearance; the header button switches between dark and light, and `theme-color` follows the active palette.
+- The contrast check covers 66 assertions in both palettes on the theme's values.
+
 ## Evidence
 
 | AC    | Test | Status | Commit |
 | ----- | ---- | ------ | ------ |
-| AC-01 | `.github/workflows/site-data.yml` passes `theme-dir: packages/ui/src/theme` to the website's `validate-project` check (CI: site-data); locally `node scripts/theme.ts <krake>/docs/site/project.yml --out <krake>/packages/ui/src/theme --check` on website `main` | built | |
-| AC-02 | `packages/ui/scripts/check-theme.mjs` (`checkAliases`: 32 properties in 2 palettes; `checkColourLiterals`: `tokens.css`, `app.css`; `checkComponents`: `<style>` blocks and Tailwind utilities of every `.svelte` file), run by `pnpm --filter @amigo-labs/krake-ui check` | built | |
-| AC-03 | `packages/ui/scripts/check-theme.mjs` (`checkNeon` with `effects.mjs`, self-test of the glow rule) and `scripts/ui-lint.mjs` (`no-neon-name`, `no-glow-shadow`) | built | |
-| AC-04 | `web-ui/test/theme.test.ts`: "deletes the Neon intensity an earlier version stored", "Settings ▸ Appearance offers the three choices and no intensity setting", "has no string of the removed intensity setting" | built | |
-| AC-05 | `web-ui/test/theme.test.ts`: "is dark with nothing stored, also on a light system", "falls back to dark for nothing stored and for an unknown value" | built | |
-| AC-06 | `web-ui/test/theme.test.ts`: "keeps a choice an earlier version stored" | built | |
-| AC-07 | `web-ui/test/theme.test.ts`: "applies and stores a pick at once, and starts in it after a reload" | built | |
-| AC-08 | `web-ui/test/theme.test.ts`: "follows the system preference under System while the page is open", "follows the system under System", "ignores the system preference under Dark and Light" | built | |
-| AC-09 | `web-ui/test/theme.test.ts`: "toggles to the palette opposite to the active one, also from System", "is the palette opposite to the active one" | built | |
-| AC-10 | `web-ui/test/theme.test.ts`: "starts dark on an unknown stored value and keeps working", "starts dark and still applies a pick when storage throws or is missing", "works without a document, a media query or storage" | built | |
-| AC-11 | `packages/ui/scripts/check-contrast.mjs` over `tokens.spec.json` (66 assertions, 2 palettes), run by `pnpm --filter @amigo-labs/krake-ui check` | built | |
-| AC-12 | `web-ui/test/theme.test.ts`: "keeps theme-color on the active background", "index.html starts in the dark palette with the dark background as theme-color", "the PWA manifest carries the dark background" | built | |
-| AC-13 | `web-ui/test/theme.test.ts`: "names the three choices in English and German", "has no string of the removed intensity setting" | built | |
-| AC-14 | manual: the owner checked the rewritten `.impeccable.md` and the "Design System" section of `AGENTS.md` ("Krake und Sofarr sind ok"), 2026-11-15 | built |        |
-| AC-15 | manual: the owner checked both palettes on the Downloads, History, Plugins and Settings pages, the Add panel, the detail panel and the command palette ("Krake und Sofarr sind ok"), 2026-11-15 | built |        |
+| AC-01 | `.github/workflows/site-data.yml` passes `theme-dir: packages/ui/src/theme` to the website's `validate-project` check (CI: site-data); locally `node scripts/theme.ts <krake>/docs/site/project.yml --out <krake>/packages/ui/src/theme --check` on website `main` | verified | aa22c7b |
+| AC-02 | `packages/ui/scripts/check-theme.mjs` (`checkAliases`: 32 properties in 2 palettes; `checkColourLiterals`: `tokens.css`, `app.css`; `checkComponents`: `<style>` blocks and Tailwind utilities of every `.svelte` file), run by `pnpm --filter @amigo-labs/krake-ui check` | verified | aa22c7b |
+| AC-03 | `packages/ui/scripts/check-theme.mjs` (`checkNeon` with `effects.mjs`, self-test of the glow rule) and `scripts/ui-lint.mjs` (`no-neon-name`, `no-glow-shadow`) | verified | aa22c7b |
+| AC-04 | `web-ui/test/theme.test.ts`: "deletes the Neon intensity an earlier version stored", "Settings ▸ Appearance offers the three choices and no intensity setting", "has no string of the removed intensity setting" | verified | c36b5f1 |
+| AC-05 | `web-ui/test/theme.test.ts`: "is dark with nothing stored, also on a light system", "falls back to dark for nothing stored and for an unknown value" | verified | c36b5f1 |
+| AC-06 | `web-ui/test/theme.test.ts`: "keeps a choice an earlier version stored" | verified | c36b5f1 |
+| AC-07 | `web-ui/test/theme.test.ts`: "applies and stores a pick at once, and starts in it after a reload" | verified | c36b5f1 |
+| AC-08 | `web-ui/test/theme.test.ts`: "follows the system preference under System while the page is open", "follows the system under System", "ignores the system preference under Dark and Light" | verified | c36b5f1 |
+| AC-09 | `web-ui/test/theme.test.ts`: "toggles to the palette opposite to the active one, also from System", "is the palette opposite to the active one" | verified | c36b5f1 |
+| AC-10 | `web-ui/test/theme.test.ts`: "starts dark on an unknown stored value and keeps working", "starts dark and still applies a pick when storage throws or is missing", "works without a document, a media query or storage" | verified | c36b5f1 |
+| AC-11 | `packages/ui/scripts/check-contrast.mjs` over `tokens.spec.json` (66 assertions, 2 palettes), run by `pnpm --filter @amigo-labs/krake-ui check` | verified | aa22c7b |
+| AC-12 | `web-ui/test/theme.test.ts`: "keeps theme-color on the active background", "index.html starts in the dark palette with the dark background as theme-color", "the PWA manifest carries the dark background" | verified | c36b5f1 |
+| AC-13 | `web-ui/test/theme.test.ts`: "names the three choices in English and German", "has no string of the removed intensity setting" | verified | c36b5f1 |
+| AC-14 | manual: the owner checked the rewritten `.impeccable.md` and the "Design System" section of `AGENTS.md` ("Krake und Sofarr sind ok"), 2026-11-15 | verified | 67933a2 |
+| AC-15 | manual: the owner checked both palettes on the Downloads, History, Plugins and Settings pages, the Add panel, the detail panel and the command palette ("Krake und Sofarr sind ok"), 2026-11-15 | verified | c482295 |
 
 ## Decisions
 
