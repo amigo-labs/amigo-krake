@@ -37,17 +37,14 @@
 
   .dot.online {
     background: var(--status-online);
-    box-shadow: 0 0 6px color-mix(in srgb, var(--status-online) 40%, transparent);
   }
 
   .dot.degraded {
     background: var(--status-degraded);
-    box-shadow: 0 0 6px color-mix(in srgb, var(--status-degraded) 40%, transparent);
   }
 
   .dot.error {
     background: var(--status-error);
-    box-shadow: 0 0 6px color-mix(in srgb, var(--status-error) 40%, transparent);
   }
 
   .dot.idle {

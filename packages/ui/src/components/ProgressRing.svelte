@@ -51,7 +51,7 @@
       stroke-dasharray={circumference}
       stroke-dashoffset={dashOffset}
       transform="rotate(-90 {size / 2} {size / 2})"
-      style="transition: stroke-dashoffset 0.5s ease; filter: drop-shadow(0 0 2px var(--accent))"
+      style="transition: stroke-dashoffset 0.5s ease"
     />
   {/if}
 </svg>

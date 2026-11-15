@@ -137,7 +137,7 @@
     flex-direction: column;
     width: 100%;
     background: var(--bg-surface);
-    border: 1px solid var(--neon-border);
+    border: 1px solid var(--border-color);
     border-radius: var(--radius-xl);
     box-shadow: var(--elev-3);
     /* dvh, not vh: the mobile keyboard shrinks the visual viewport and vh

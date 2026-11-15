@@ -22,10 +22,13 @@
   {
     "fg": "--text-muted",
     "bg": [
-      "--bg-surface-2"
+      "--bg-deep",
+      "--bg-surface",
+      "--bg-surface-2",
+      "--hover-bg"
     ],
-    "min": 3.0,
-    "note": "decorative captions only, never body copy"
+    "min": 4.5,
+    "note": "captions and hints; body-safe in the shared theme"
   },
   {
     "fg": "--accent-ink",
@@ -80,7 +83,7 @@
       "--bg-surface"
     ],
     "min": 1.5,
-    "note": "decorative only: glows, gradients, scanlines. Solid fills use --accent-solid, which the 4.5 check above already covers. This guard only asserts the hue stays perceptible against the page."
+    "note": "decorative only: progress fills, the selected-edge bar, slider thumbs. Solid fills use --accent-solid, which the 4.5 check above already covers. This guard only asserts the hue stays perceptible against the page."
   },
   {
     "fg": "--status-online",
@@ -107,11 +110,21 @@
     "note": "status dot fill, non-text"
   },
   {
+    "fg": "--border-strong",
+    "bg": [
+      "--bg-deep",
+      "--bg-surface",
+      "--bg-surface-2"
+    ],
+    "min": 3.0,
+    "note": "outline of a control the user has to find: a field, a toggle rail"
+  },
+  {
     "fg": "--border-color",
     "bg": [
       "--bg-surface"
     ],
-    "min": 1.4,
-    "note": "separator must stay visible"
+    "min": 1.3,
+    "note": "hairline between surfaces, decorative; the shared theme's border is 1.37:1 on surface in both palettes. Control outlines use --border-strong."
   }
 ]

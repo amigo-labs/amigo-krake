@@ -2,11 +2,12 @@
 /**
  * Contrast checker for the @amigo-labs/krake-ui design tokens.
  *
- * Parses `src/tokens.css` as text, resolves the cascade for every theme, evaluates `var()` / `color-mix()` /
- * `rgba()` itself, and asserts the WCAG 2.1 ratios declared in
- * `src/tokens.spec.json`.
+ * Parses the generated theme file `src/theme/tokens.css` and Krake's
+ * `src/tokens.css` as text (`tokens-lib.mjs`), resolves the cascade for the
+ * dark and the light palette, evaluates `var()` / `color-mix()` / `rgba()`
+ * itself, and asserts the WCAG 2.1 ratios declared in `src/tokens.spec.json`.
  *
- * Why text-parsing rather than a headless browser: the token file is flat
+ * Why text-parsing rather than a headless browser: the token files are flat
  * by construction (only `:root`-rooted selectors carry custom properties),
  * so a scanner is exact here and keeps CI free of a browser dependency.
  *
@@ -19,10 +20,9 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const TOKENS = join(HERE, "..", "src", "tokens.css");
 const SPEC = join(HERE, "..", "src", "tokens.spec.json");
 
-const THEMES = ["dark", "light"];
+import { loadRules, resolveTheme, THEMES } from "./tokens-lib.mjs";
 
 /* ------------------------------------------------------------------ *
  * Colour maths
@@ -99,64 +99,6 @@ function contrast(fg, bg) {
 function hex({ r, g, b }) {
   const p = (n) => Math.round(n).toString(16).padStart(2, "0");
   return `#${p(r)}${p(g)}${p(b)}`;
-}
-
-/* ------------------------------------------------------------------ *
- * Token file parsing
- * ------------------------------------------------------------------ */
-
-/**
- * Extract every `:root...{ ... }` rule in source order.
- * The token file never nests custom properties inside another rule, so a
- * flat scan for brace-delimited blocks whose selector starts at `:root` is
- * exhaustive.
- */
-function parseRules(source) {
-  // Strip comments first — an inline `/* ... */` ahead of a declaration would
-  // otherwise be glued onto the property name and silently drop the token.
-  const css = source.replace(/\/\*[\s\S]*?\*\//g, "");
-  const rules = [];
-  const re = /(^|[}\s])(:root[^{}]*?)\{([^{}]*)\}/g;
-  let m;
-  while ((m = re.exec(css)) !== null) {
-    const selector = m[2].trim();
-    const decls = {};
-    for (const d of m[3].split(";")) {
-      const i = d.indexOf(":");
-      if (i === -1) continue;
-      const prop = d.slice(0, i).trim();
-      if (!prop.startsWith("--")) continue;
-      decls[prop] = d.slice(i + 1).trim();
-    }
-    if (Object.keys(decls).length) rules.push({ selector, decls });
-  }
-  return rules;
-}
-
-/** Does this selector apply to the given theme? */
-function applies(selector, theme) {
-  const classes = [...selector.matchAll(/\.([\w-]+)/g)].map((m) => m[1]);
-  for (const c of classes) {
-    if (c === "light") {
-      if (theme !== "light") return false;
-    } else {
-      return false; // unknown modifier — not part of the theme matrix
-    }
-  }
-  return true;
-}
-
-/** Flatten the cascade into one {prop: rawValue} map. */
-function resolveTheme(rules, theme) {
-  const applicable = rules
-    .filter((r) => applies(r.selector, theme))
-    .map((r, i) => ({ ...r, spec: (r.selector.match(/\./g) || []).length, order: i }));
-
-  applicable.sort((a, b) => (a.spec - b.spec) || (a.order - b.order));
-
-  const out = {};
-  for (const r of applicable) Object.assign(out, r.decls);
-  return out;
 }
 
 /* ------------------------------------------------------------------ *
@@ -295,9 +237,8 @@ function main() {
   selfTest();
 
   const report = process.argv.includes("--report");
-  const css = readFileSync(TOKENS, "utf8");
   const spec = JSON.parse(readFileSync(SPEC, "utf8"));
-  const rules = parseRules(css);
+  const rules = loadRules();
 
   const failures = [];
   const rows = [];
