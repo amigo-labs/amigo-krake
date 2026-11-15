@@ -233,9 +233,14 @@ jobs:
         with:
           key: tauri-release-${{ matrix.target }}
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: pnpm
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
@@ -256,11 +261,12 @@ jobs:
         if: runner.os == 'Windows'
         run: choco install protoc -y
 
+      # The web UI is a pnpm workspace package (it depends on packages/ui
+      # through `workspace:*`); there is no package-lock.json for `npm ci`.
       - name: Build Web UI
-        working-directory: web-ui
         run: |
-          npm ci
-          npx vite build
+          pnpm install --frozen-lockfile
+          pnpm --filter @amigo-labs/krake-web-ui build
 
       - name: Build Tauri installer
         uses: tauri-apps/tauri-action@v0
