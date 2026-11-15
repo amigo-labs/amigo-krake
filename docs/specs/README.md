@@ -9,6 +9,7 @@ notes for Krake. The workflow is in `AGENTS.md`, "Spec-driven workflow".
 | - | ---- | ------ | ---------- |
 | 1 | [plugin-wasm-sandbox](plugin-wasm-sandbox.md) | todo | plugin-wasm-guest (done) |
 | 2 | [desktop-app](desktop-app.md) | todo | — (three PRs: P1 embedded server, P2 tray, P3 updater, release and update choice) |
+| 3 | [amigo-theme](amigo-theme.md) | todo | — (the shared amigo app theme from amigo-labs/website; the neon effects go) |
 
 ## Done
 
@@ -37,4 +38,5 @@ Gaps not yet written as specs.
 
 | Gap | Note |
 | --- | ---- |
+| Primitives of `packages/ui` on the shared component classes (`am-*`) | After amigo-theme: buttons, fields, toggles, chips, dialogs take the markup and classes of the shared theme's `components.css`. |
 | YouTube extractor runs player JavaScript in a native QuickJS inside the daemon | `crates/extractors/src/youtube/n_challenge.rs`. The script comes from YouTube, not from a reviewed plugin. Candidate: run it through the Wasm executor once plugin-wasm-sandbox is done. |
