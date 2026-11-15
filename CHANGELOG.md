@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.1](https://github.com/amigo-labs/amigo-krake/compare/v0.1.0...v0.1.1) (2026-11-15)
+
+
+### Features
+
+* **ui:** take colours, radii, shadows and fonts from the shared amigo theme (AC-01, AC-02, AC-03, AC-11) ([aa22c7b](https://github.com/amigo-labs/amigo-krake/commit/aa22c7b3212fe5740f267d3533f290ff26e50e62))
+* **web-ui:** drop the neon effects and offer Dark, Light and System (AC-03, AC-04, AC-05, AC-06, AC-07, AC-08, AC-09, AC-10, AC-12, AC-13) ([c36b5f1](https://github.com/amigo-labs/amigo-krake/commit/c36b5f1203dde9adce4e93a6324786d33bc0c457))
+* **web-ui:** the shared amigo theme, no neon, Dark / Light / System ([eac1c27](https://github.com/amigo-labs/amigo-krake/commit/eac1c27f1f41fe59ce802c8affefc404019023ab))
+
+
+### Bug Fixes
+
+* **ui:** take the last colour, shadow and radius of Krake's own from the tokens (AC-02) ([c359e13](https://github.com/amigo-labs/amigo-krake/commit/c359e130049556cee34316270e2f4f260cfe4b51))
+
 ## 0.1.0 (2026-11-11)
 
 
