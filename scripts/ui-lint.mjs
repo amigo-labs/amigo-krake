@@ -9,6 +9,8 @@
  *     tied at 100 and a modal above the skip link,
  *   - decorative accent tokens used as a text colour, which is what put light
  *     mode at 1.85:1,
+ *   - the neon effects the shared amigo theme replaced (glow shadows,
+ *     scanlines, flicker, the intensity setting), which must not come back,
  *   - icon-only buttons with no accessible name,
  *   - radiogroups that announce a keyboard contract they do not implement,
  *   - and the slow drift back to inline styles instead of primitives.
@@ -19,6 +21,7 @@
 
 import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import { findNeonEffects } from "../packages/ui/scripts/effects.mjs";
 
 const ROOT = process.cwd();
 const BUDGET_PATH = join(ROOT, "scripts", "ui-budget.json");
@@ -44,7 +47,7 @@ const RULES = [
   },
   {
     id: "no-decorative-token-as-text",
-    test: /(?<![-\w])color:\s*var\(--(?:accent|success|warning|danger|neon-primary|neon-success|neon-warning|neon-accent)\)/,
+    test: /(?<![-\w])color:\s*var\(--(?:accent|success|warning|danger)\)/,
     message:
       "Decorative accent tokens fail WCAG AA as text. Use the -ink variant (--accent-ink, --danger-ink, ...).",
   },
@@ -142,6 +145,16 @@ for (const file of files) {
       }
     }
   });
+
+  // Former neon names and glow shadows (ids no-neon-name, no-glow-shadow).
+  // The generated theme files are checked where they are made.
+  if (!rel.startsWith("packages/ui/src/theme/")) {
+    for (const p of findNeonEffects(text)) {
+      const prev = lines[p.line - 2] ?? "";
+      if (DISABLE.exec(prev)?.[1] === p.id) continue;
+      failures.push(`${rel}:${p.line}  [${p.id}] ${p.message}\n    ${p.excerpt}`);
+    }
+  }
 
   if (rel.endsWith(".svelte")) {
     for (const p of [...checkIconButtons(text, rel), ...checkRadiogroups(text)]) {

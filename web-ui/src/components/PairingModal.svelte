@@ -76,7 +76,7 @@
   >
     <div class="grid gap-3">
       {#each pending as p (p.id)}
-        <Card padding="md" neon={false}>
+        <Card padding="md">
           <p class="font-semibold text-sm" style="color: var(--text-primary)">{p.device_name}</p>
           <p class="text-xs mt-0.5" style="color: var(--text-secondary)">
             {tr($locale, "pairing.from")}

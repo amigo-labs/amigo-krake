@@ -1,5 +1,5 @@
 {
-  "total": 208,
+  "total": 205,
   "perFile": {
     "packages/ui/src/components/ProgressRing.svelte": 1,
     "web-ui/src/App.svelte": 33,
@@ -17,7 +17,7 @@
     "web-ui/src/components/SkeletonCard.svelte": 5,
     "web-ui/src/components/Toasts.svelte": 7,
     "web-ui/src/components/download/DownloadItem.svelte": 1,
-    "web-ui/src/components/settings/SettingsAppearance.svelte": 6,
+    "web-ui/src/components/settings/SettingsAppearance.svelte": 3,
     "web-ui/src/components/settings/SettingsDownloads.svelte": 11,
     "web-ui/src/components/settings/SettingsFeatures.svelte": 1,
     "web-ui/src/components/settings/SettingsRssFeeds.svelte": 6,

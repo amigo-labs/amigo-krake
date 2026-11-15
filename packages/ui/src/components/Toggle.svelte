@@ -90,7 +90,7 @@
     display: block;
     border-radius: var(--radius-full);
     background: var(--bg-surface-2);
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--border-strong);
     transition: background-color var(--dur-fast) var(--ease-out);
   }
 

@@ -148,11 +148,9 @@
   .btn.solid {
     background: var(--btn-solid);
     color: var(--btn-on-solid);
-    box-shadow: var(--neon-glow-sm);
   }
   .btn.solid:hover:not(:disabled) {
     filter: brightness(1.1);
-    box-shadow: var(--neon-glow-md);
   }
 
   .btn.soft {

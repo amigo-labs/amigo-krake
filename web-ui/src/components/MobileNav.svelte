@@ -40,7 +40,7 @@
       onclick={onadd}
       aria-label={tr($locale, "cmd.add_download")}
       class="fab absolute -top-5 w-14 h-14 rounded-full flex items-center justify-center"
-      style="background: var(--accent-solid); color: var(--on-accent); box-shadow: var(--neon-glow-md), var(--elev-2)"
+      style="background: var(--accent-solid); color: var(--on-accent); box-shadow: var(--elev-2)"
     >
       <Icon name="plus" size={24} />
     </button>
@@ -75,10 +75,6 @@
 
   .mobile-tab.active {
     color: var(--accent-ink);
-  }
-
-  .mobile-tab.active :global(svg) {
-    filter: drop-shadow(0 0 var(--neon-drop-blur, 3px) currentcolor);
   }
 
   .fab {

@@ -1,29 +1,33 @@
 /* ========================================
-   @amigo-labs/krake-ui — Design tokens (Corporate Neon)
+   @amigo-labs/krake-ui — design tokens
    Used by web-ui.
 
-   60:30:10 Rule:
-     60% dark backgrounds (bg-deep, bg-surface)
-     30% secondary surfaces, text, borders
-     10% neon accents (CTAs, active states, progress)
+   The look is the shared amigo app theme: `theme/tokens.css` is generated in
+   amigo-labs/website for Krake's accent (docs/site/project.yml) and holds
+   every token as `--am-*`, dark on `:root` and light under
+   `data-theme="light"` (or the system preference when the root has no
+   `data-theme`). Never edit the files in `theme/`; the Site data workflow
+   fails when they differ from what the generator writes.
 
-   ACCENT ROLE SPLIT
-   -----------------
-   A single accent hue cannot be both a convincing neon glow and readable
-   text — the glow wants a saturated mid-tone, WCAG wants distance from the
-   background. So the accent is split into three roles:
+   This file keeps Krake's property names as aliases of those tokens, plus
+   the scales the shared theme does not have (z-index, font-size steps, a few
+   motion curves). It defines no colour of its own: `scripts/check-theme.mjs`
+   asserts that, and `scripts/check-contrast.mjs` the contrast of every pair
+   in `tokens.spec.json` for both palettes.
 
-     --accent        decorative only: glows, borders, bar/ring/dot fills,
-                     gradients, scanlines. Never carries text.
-     --accent-ink    the accent as text or icon. >= 4.5:1 on every surface.
-     --accent-solid  background of a filled control. Equals --accent-ink,
-                     paired with --on-accent as its foreground.
-     --accent-subtle background of a selected chip / active nav item.
-                     --accent-ink on it is >= 4.5:1.
-
-   The same split applies to success / warning / danger. `packages/ui/scripts/
-   check-contrast.mjs` asserts every pair in both themes.
+   ACCENT ROLES
+     --accent        decorative only: progress fills, the selected-edge bar,
+                     slider thumbs. Never carries text.
+     --accent-ink    the accent as text or icon.
+     --accent-solid  fill of the primary button and of checked controls,
+                     always with --on-accent on it.
+     --accent-subtle fill of a selected row, chip or nav item.
+   Status colours use the same split (`--success` / `--success-ink`, ...).
+   No glow, no gradients in an accent colour: depth is a border first and
+   `--elev-1..3` for what floats.
    ======================================== */
+
+@import "./theme/tokens.css";
 
 /* Inter is self-hosted, not fetched from Google Fonts: the server ships a
    `font-src 'self' data:` CSP, so a remote stylesheet is blocked outright and
@@ -67,12 +71,12 @@
   --color-border: var(--border-color);
   --color-hover-bg: var(--hover-bg);
 
-  /* Radii — see the scale below */
-  --radius-xs: 0.25rem;
-  --radius-sm: 0.375rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
-  --radius-xl: 1rem;
+  /* Radii — the shared theme's scale; it ends at lg, so xl is lg */
+  --radius-xs: var(--am-radius-xs);
+  --radius-sm: var(--am-radius-sm);
+  --radius-md: var(--am-radius-md);
+  --radius-lg: var(--am-radius-lg);
+  --radius-xl: var(--am-radius-lg);
 
   /* Layering */
   --z-sticky: 20;
@@ -87,67 +91,50 @@
 }
 
 /* ========================================
-   DARK MODE (default) — VS Code Dark
+   KRAKE'S NAMES FOR THE SHARED TOKENS
+   One rule for both palettes: the values change where `--am-*` change.
    ======================================== */
 :root {
+  /* Surfaces: the window, panels on it, fields and nested blocks on a panel */
+  --bg-deep: var(--am-bg);
+  --bg-surface: var(--am-surface);
+  --bg-surface-2: var(--am-surface-raised);
+  --hover-bg: var(--am-hover);
+
+  /* Text — all three hold 4.5:1 on every surface above */
+  --text-primary: var(--am-text);
+  --text-secondary: var(--am-text-secondary);
+  --text-muted: var(--am-text-muted);
+
+  /* A hairline between surfaces; what the user has to find (a field, a
+     toggle rail) is outlined with --border-strong (3:1). */
+  --border-color: var(--am-border);
+  --border-strong: var(--am-border-strong);
+
   /* Accent — Krake's brand lime (docs/site/project.yml `accent`). One
      colour, no user palettes: the brand decides it. */
-  --accent: #9be22d;
-  --accent-ink: #9be22d;
-  --accent-solid: var(--accent-ink);
-  --on-accent: #10131a;
+  --accent: var(--am-accent);
+  --accent-ink: var(--am-accent-ink);
+  --accent-solid: var(--am-accent-solid);
+  --accent-subtle: var(--am-accent-subtle);
+  --on-accent: var(--am-on-accent);
 
-  /* Semantic — decorative fills */
-  --success: #22c55e;
-  --warning: #eab308;
-  --danger: #ef4444;
-  /* Semantic — text/icon variants */
-  --success-ink: #4ade80;
-  --warning-ink: #facc15;
-  --danger-ink: #f87171;
-
-  --bg-deep: #1e1e1e;
-  --bg-surface: #252526;
-  --bg-surface-2: #2d2d2d;
-  --text-primary: #e6e6e6;
-  --text-secondary: #a6a6a6;
-  /* Decorative captions only (>= 3:1). NOT for body copy. */
-  --text-muted: #8f8f8f;
-  --border-color: #3f3f3f;
-
-  --accent-subtle: color-mix(in srgb, var(--accent-ink) 8%, var(--bg-surface));
-
-  /* Neon glow tokens (scaled at runtime by applyIntensity) */
-  --neon-glow-sm: 0 0 6px color-mix(in srgb, var(--accent) 25%, transparent);
-  --neon-glow-md: 0 0 12px color-mix(in srgb, var(--accent) 30%, transparent),
-                  0 0 4px color-mix(in srgb, var(--accent) 15%, transparent);
-  --neon-glow-lg: 0 0 20px color-mix(in srgb, var(--accent) 35%, transparent),
-                  0 0 8px color-mix(in srgb, var(--accent) 20%, transparent),
-                  0 0 2px color-mix(in srgb, var(--accent) 40%, transparent);
-  --neon-text-glow: 0 0 8px color-mix(in srgb, var(--accent) 40%, transparent);
-  --neon-border: color-mix(in srgb, var(--accent) 30%, transparent);
-  --neon-border-hover: color-mix(in srgb, var(--accent) 50%, transparent);
-  --neon-drop-blur: 3px;
-  --hover-bg: color-mix(in srgb, var(--accent) 8%, transparent);
+  /* Status — fills and dots, and the text/icon variants */
+  --success: var(--am-success);
+  --warning: var(--am-warning);
+  --danger: var(--am-danger);
+  --success-ink: var(--am-success-ink);
+  --warning-ink: var(--am-warning-ink);
+  --danger-ink: var(--am-danger-ink);
 
   /* Status dots (decorative fills; the label beside them uses *-ink) */
-  --status-online: #22c55e;
-  --status-degraded: #eab308;
-  --status-error: #ef4444;
+  --status-online: var(--am-success);
+  --status-degraded: var(--am-warning);
+  --status-error: var(--am-danger);
 
-  /* ---- Deprecated aliases -------------------------------------------
-     Kept so existing inline styles keep rendering during the migration to
-     primitives. They map to the DECORATIVE tokens — using them as a text
-     colour fails WCAG AA and is rejected by scripts/ui-lint.mjs.
-     -------------------------------------------------------------------- */
-  --neon-primary: var(--accent);
-  --neon-success: var(--success);
-  --neon-warning: var(--warning);
-  --neon-accent: var(--danger);
-
-  /* Typography scale (Major Third 1.25) */
-  --font-sans: 'Inter Variable', 'Inter', system-ui, -apple-system, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  /* Typography: the shared stacks, Krake's size steps (Major Third 1.25) */
+  --font-sans: var(--am-font-sans);
+  --font-mono: var(--am-font-mono);
   --font-xs: 0.75rem;
   --font-sm: 0.875rem;
   --font-base: 1rem;
@@ -157,29 +144,29 @@
   --font-display: 2.5rem;
 
   /* Radii */
-  --radius-xs: 0.25rem;
-  --radius-sm: 0.375rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
-  --radius-xl: 1rem;
-  --radius-full: 9999px;
+  --radius-xs: var(--am-radius-xs);
+  --radius-sm: var(--am-radius-sm);
+  --radius-md: var(--am-radius-md);
+  --radius-lg: var(--am-radius-lg);
+  --radius-xl: var(--am-radius-lg);
+  --radius-full: var(--am-radius-full);
 
   /* Spacing */
-  --space-1: 0.25rem;
-  --space-2: 0.5rem;
-  --space-3: 0.75rem;
-  --space-4: 1rem;
-  --space-6: 1.5rem;
-  --space-8: 2rem;
-  --space-12: 3rem;
-  --space-16: 4rem;
-  --page-pad: 2rem;
+  --space-1: var(--am-space-1);
+  --space-2: var(--am-space-2);
+  --space-3: var(--am-space-3);
+  --space-4: var(--am-space-4);
+  --space-6: var(--am-space-6);
+  --space-8: var(--am-space-8);
+  --space-12: var(--am-space-12);
+  --space-16: var(--am-space-16);
+  --page-pad: var(--am-space-8);
 
-  /* Elevation — surface + shadow pairs */
+  /* Elevation — neutral shadows for what floats */
   --elev-0: none;
-  --elev-1: 0 1px 3px 0 rgb(0 0 0 / 10%), 0 1px 2px -1px rgb(0 0 0 / 8%);
-  --elev-2: 0 4px 12px rgb(0 0 0 / 14%);
-  --elev-3: 0 12px 32px rgb(0 0 0 / 24%);
+  --elev-1: var(--am-elev-1);
+  --elev-2: var(--am-elev-2);
+  --elev-3: var(--am-elev-3);
 
   /* Layering — z-index is assigned here and nowhere else */
   --z-sticky: 20;
@@ -195,60 +182,20 @@
 
   /* Motion system (shared) — one set of curves & durations so every
      transition across the app feels like it belongs to the same product. */
-  --ease-out: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-out: var(--am-ease-out);
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
-  --dur-fast: 0.15s;
-  --dur-base: 0.25s;
+  --dur-fast: var(--am-dur-fast);
+  --dur-base: var(--am-dur-base);
   --dur-slow: 0.4s;
 }
 
 @media (max-width: 768px) {
-  :root { --page-pad: 1rem; }
+  :root { --page-pad: var(--am-space-4); }
 }
 
 /* ========================================
-   LIGHT MODE
-   ======================================== */
-:root.light {
-  --bg-deep: #f4f5f7;
-  --bg-surface: #ffffff;
-  --bg-surface-2: #ebedf2;
-  --text-primary: #1a1d2e;
-  --text-secondary: #54586a;
-  --text-muted: #6b6f80;
-  --border-color: rgba(0, 0, 0, 0.15);
-  --hover-bg: color-mix(in srgb, var(--accent) 8%, transparent);
-
-  /* The brand lime nearly vanishes on white (1.45:1 on --bg-deep): fills
-     and glows take the next darker lime, and the ink and the filled
-     control a dark one that clears 4.5:1. */
-  --accent: #84cc16;
-  --accent-ink: #3f6212;
-  --on-accent: #ffffff;
-  --accent-subtle: color-mix(in srgb, var(--accent-ink) 12%, var(--bg-surface));
-
-  --success-ink: #127538;
-  --warning-ink: #8f5806;
-  --danger-ink: #b91c1c;
-
-  /* Stronger neon borders/glows on light bg for visibility */
-  --neon-border: color-mix(in srgb, var(--accent) 25%, transparent);
-  --neon-border-hover: color-mix(in srgb, var(--accent) 45%, transparent);
-
-  /* Status dot fills darken so they stay visible on white */
-  --status-online: #16a34a;
-  --status-degraded: #a16207;
-  --status-error: #dc2626;
-
-  /* Softer shadows on light backgrounds */
-  --elev-1: 0 1px 3px 0 rgb(0 0 0 / 6%), 0 1px 2px -1px rgb(0 0 0 / 4%);
-  --elev-2: 0 4px 12px rgb(0 0 0 / 8%);
-  --elev-3: 0 12px 32px rgb(0 0 0 / 14%);
-}
-
-/* ========================================
-   BASE (60% — dark backgrounds)
+   BASE
    ======================================== */
 body {
   background: var(--bg-deep);
@@ -260,44 +207,18 @@ body {
 }
 
 /* ========================================
-   ACCENT TEXT UTILITIES (10% — accent only)
-   These use the *-ink roles, never the decorative ones.
+   OUTLINED CARD
+   A panel on the page: a hairline border, lifted a little on hover.
    ======================================== */
-.neon-text-primary { color: var(--accent-ink); }
-.neon-text-success { color: var(--success-ink); }
-.neon-text-accent  { color: var(--danger-ink); }
-.neon-text-warning { color: var(--warning-ink); }
-
-/* ========================================
-   NEON CARD
-   ======================================== */
-.neon-card {
+.outline-card {
   position: relative;
-  border: 1px solid var(--neon-border);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--elev-0);
+  transition: box-shadow var(--dur-base) var(--ease-out);
+}
+
+.outline-card:hover {
   box-shadow: var(--elev-1);
-  transition: border-color 0.3s ease, box-shadow 0.3s ease;
-}
-
-.neon-card:hover {
-  border-color: var(--neon-border-hover);
-  box-shadow: var(--neon-glow-md);
-}
-
-/* CRT scanlines on cards — only at full neon intensity */
-.neon-full .neon-card::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  border-radius: inherit;
-  z-index: 1;
-  background: repeating-linear-gradient(
-    to bottom,
-    transparent 0px,
-    transparent 3px,
-    color-mix(in srgb, var(--accent) 3%, transparent) 3px,
-    color-mix(in srgb, var(--accent) 3%, transparent) 4px
-  );
 }
 
 /* ========================================
@@ -309,7 +230,6 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--accent-ink);
-  text-shadow: var(--neon-text-glow);
 }
 
 /* ========================================
@@ -325,21 +245,14 @@ body {
 
 .status-dot--online {
   background-color: var(--status-online);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--status-online) 40%, transparent),
-              0 0 2px var(--status-online);
 }
 
 .status-dot--degraded {
   background-color: var(--status-degraded);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--status-degraded) 40%, transparent),
-              0 0 2px var(--status-degraded);
 }
 
 .status-dot--error {
   background-color: var(--status-error);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--status-error) 40%, transparent),
-              0 0 2px var(--status-error);
-  animation: neon-flicker 3s ease-in-out infinite;
 }
 
 /* ========================================
@@ -362,24 +275,11 @@ body {
   background: linear-gradient(
     90deg,
     var(--accent-solid) 0%,
-    color-mix(in srgb, var(--accent-solid) 70%, white) 50%,
+    color-mix(in srgb, var(--accent-solid) 70%, var(--text-primary)) 50%,
     var(--accent-solid) 100%
   );
   background-size: 200% 100%;
   animation: shimmer 2s linear infinite;
-}
-
-/* ========================================
-   NEON TOP LINE
-   ======================================== */
-.neon-top-line::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, var(--accent), var(--danger), transparent);
 }
 
 /* ========================================
@@ -422,45 +322,14 @@ body {
   100% { background-position: 200% 0; }
 }
 
-@keyframes neon-pulse {
-  0%, 100% { box-shadow: 0 0 4px var(--accent); }
-  50% { box-shadow: 0 0 10px var(--accent); }
+/* The dot of a running transfer breathes: size and opacity, no shadow. */
+@keyframes status-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.25); opacity: 0.7; }
 }
 
 .status-pulse {
-  animation: neon-pulse 2s ease-in-out infinite;
-}
-
-@keyframes neon-flicker {
-  0%, 100% { opacity: 1; }
-  92% { opacity: 1; }
-  93% { opacity: 0.6; }
-  94% { opacity: 1; }
-  96% { opacity: 0.7; }
-  97% { opacity: 1; }
-}
-
-@keyframes neon-letter-flicker {
-  0%, 17.9%, 18.9%, 51.9%, 53.6%, 78.9%, 80.9%, 100% {
-    color: var(--accent-ink);
-    text-shadow: 0 0 7px var(--accent),
-                 0 0 20px color-mix(in srgb, var(--accent) 60%, transparent),
-                 0 0 40px color-mix(in srgb, var(--accent) 30%, transparent);
-    opacity: 1;
-  }
-  18% { opacity: 0.15; text-shadow: none; }
-  52% { opacity: 0.1; text-shadow: none; }
-  52.8% { opacity: 0.7; text-shadow: 0 0 4px var(--accent); }
-  53.1% { opacity: 0.1; text-shadow: none; }
-  79% { opacity: 0.1; text-shadow: none; }
-  79.6% { opacity: 0.5; text-shadow: 0 0 3px var(--accent); }
-  79.9% { opacity: 0.08; text-shadow: none; }
-  80.3% { opacity: 0.6; text-shadow: 0 0 4px var(--accent); }
-  80.6% { opacity: 0.1; text-shadow: none; }
-}
-
-.neon-full .neon-flicker-text {
-  animation: neon-letter-flicker 5s step-end infinite;
+  animation: status-pulse 2s ease-in-out infinite;
 }
 
 @keyframes float {

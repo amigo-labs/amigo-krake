@@ -1,9 +1,10 @@
 <script lang="ts">
   import { fade } from "svelte/transition";
   import {
-    currentPage, openAddPanel, theme, neonIntensity,
+    currentPage, openAddPanel,
     type Page,
   } from "../lib/stores";
+  import { theme } from "../lib/theme";
   import { locale, tr } from "../lib/i18n";
   import { focusTrap } from "../lib/focusTrap";
   import { scaleFade, dur } from "../lib/motion";
@@ -19,14 +20,6 @@
     keywords: string;
     run: () => void;
   }
-
-  const intensities: { value: number; key: string }[] = [
-    { value: 0, key: "intensity.off" },
-    { value: 0.25, key: "intensity.low" },
-    { value: 0.5, key: "intensity.mid" },
-    { value: 0.75, key: "intensity.high" },
-    { value: 1, key: "intensity.full" },
-  ];
 
   const pages: { id: Page; key: string; icon: string }[] = [
     { id: "downloads", key: "nav.downloads", icon: "arrow-down" },
@@ -73,17 +66,6 @@
       keywords: "theme dark light mode appearance",
       run: () => go(() => theme.toggle()),
     },
-    ...intensities.map((it) => {
-      const name = tr($locale, it.key);
-      return {
-        id: `intensity-${it.value}`,
-        group: tr($locale, "cmd.group_appearance"),
-        label: tr($locale, "cmd.set_intensity", { name }),
-        icon: "bolt",
-        keywords: `neon intensity glow ${name}`,
-        run: () => go(() => neonIntensity.set(it.value)),
-      };
-    }),
   ]);
 
   let query = $state("");
@@ -153,7 +135,7 @@
     aria-modal="true"
     aria-label={tr($locale, "cmd.hint_open")}
     tabindex="-1"
-    class="cmd-panel relative w-full max-w-xl rounded-xl overflow-hidden neon-card"
+    class="cmd-panel relative w-full max-w-xl rounded-xl overflow-hidden outline-card"
     style="background: var(--bg-surface)"
     transition:scaleFade={{ duration: dur(180), y: 8 }}
     onkeydown={onKeydown}
@@ -199,7 +181,7 @@
               onmousemove={() => (selected = idx)}
               class="w-full flex items-center gap-3 px-3 py-2 mx-1 rounded-lg text-left text-sm"
               style={selected === idx
-                ? "background: color-mix(in srgb, var(--neon-primary) 14%, transparent); color: var(--accent-ink)"
+                ? "background: var(--accent-subtle); color: var(--accent-ink)"
                 : "color: var(--text-primary)"}
             >
               {#if cmd.icon}

@@ -72,7 +72,7 @@
     background: linear-gradient(
       90deg,
       var(--pb-fill) 0%,
-      color-mix(in srgb, var(--pb-fill) 70%, white) 50%,
+      color-mix(in srgb, var(--pb-fill) 70%, var(--text-primary)) 50%,
       var(--pb-fill) 100%
     );
     background-size: 200% 100%;

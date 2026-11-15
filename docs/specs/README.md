@@ -15,6 +15,7 @@ notes for Krake. The workflow is in `AGENTS.md`, "Spec-driven workflow".
 Specs from before this workflow carry a bold `**Status**` header instead of
 front matter; they are converted when next revised.
 
+- [amigo-theme](amigo-theme.md)
 - [docker-security](docker-security.md)
 - [integration-tests](integration-tests.md)
 - [plugin-wasm-guest](plugin-wasm-guest.md)
@@ -37,4 +38,5 @@ Gaps not yet written as specs.
 
 | Gap | Note |
 | --- | ---- |
+| Primitives of `packages/ui` on the shared component classes (`am-*`) | After amigo-theme: buttons, fields, toggles, chips, dialogs take the markup and classes of the shared theme's `components.css`. |
 | YouTube extractor runs player JavaScript in a native QuickJS inside the daemon | `crates/extractors/src/youtube/n_challenge.rs`. The script comes from YouTube, not from a reviewed plugin. Candidate: run it through the Wasm executor once plugin-wasm-sandbox is done. |
