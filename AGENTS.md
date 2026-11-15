@@ -662,32 +662,33 @@ Two more shared skills are vendored for the web UI: `improve <target> [idea]` (m
 
 ---
 
-## Design System (Corporate Neon)
+## Design System (gemeinsames amigo-Thema)
 
 > Full design system in `.impeccable.md`. Summary below for every session.
 
 ### Target Audience
-Power users and tech enthusiasts managing downloads (HTTP, Usenet) centrally. Dark mode preferred, status at a glance.
+Power users and tech enthusiasts managing downloads (HTTP, Usenet) centrally. Status at a glance, on desktop and mobile.
 
 ### Brand: Technical, Precise, Powerful
-- Corporate Neon — professional at rest, electric on interaction
-- One accent: the brand lime `#9be22d` (no user palettes)
-- Dark mode primary, "Lights On" as alternative
-- Neon intensity 5 levels (Off to Full), CRT scanlines only at Full
+- The shared amigo app theme (Entscheidung 16): same surfaces, text, status colours, type, radii and shadows as every amigo app
+- One accent: the brand lime `#9be22d` (no user palettes), split into the roles `accent`, `accent-ink`, `accent-solid`, `accent-subtle`
+- Dark is the default; the user picks Dark, Light or System (Settings ▸ Appearance, header button for dark / light)
+- No neon: no glow shadows, no scanlines, no flicker, no intensity setting
 
 ### Design Principles
-1. **Glow Follows Function** — Neon effects reinforce information hierarchy
+1. **One Theme, One Accent** — every colour, radius, shadow and font stack is a shared token; Krake defines no colour of its own
 2. **Instant Orientation** — Status, speed, progress at a glance
-3. **Adjustable Intensity** — User decides cyberpunk level
+3. **Borders First** — a hairline between surfaces, `elev-1..3` only for what floats, the accent for state
 4. **Responsive Without Compromise** — 320px to 2560px
-5. **Accessibility** — `prefers-reduced-motion`, WCAG AA across all themes
+5. **Accessibility** — `prefers-reduced-motion`, WCAG AA in both palettes
 
 ### Tokens
+- **Files**: `packages/ui/src/theme/` is generated in amigo-labs/website (`node scripts/theme.ts amigo-labs/amigo-krake --out ../amigo-krake/packages/ui/src/theme`) and never edited; `packages/ui/src/tokens.css` maps Krake's property names (`--bg-surface`, `--text-primary`, …) onto the `--am-*` tokens
 - **Typography**: Inter + ui-monospace stack, Major Third Scale
 - **Breakpoint**: 768px (single primary)
-- **60:30:10**: 60% dark bg, 30% surfaces/text/borders, 10% neon accents
-- **Neon Glow**: --neon-glow-sm/md/lg, --neon-text-glow, --neon-border (scaled by intensity)
-- **Status**: online=#22c55e, warning=#eab308, error=#ef4444
+- **Accent share**: about a tenth of a screen — CTAs, active states, progress
+- **Status**: `--success` / `--warning` / `--danger` for fills and dots, the `-ink` forms for text
+- **Checks**: `pnpm --filter @amigo-labs/krake-ui check` (contrast of every pair in `tokens.spec.json`, aliases equal their tokens, no neon effect), `node scripts/ui-lint.mjs`
 
 ---
 
@@ -724,7 +725,7 @@ The project facts the shared spec skills (`spec`, `spec-build`, `spec-check`, `s
 - **Stopping points** — a new dependency (`Cargo.toml`, `package.json`), a change of the plugin host API (`HOST_API_VERSION`, `krake.d.ts`, `docs/plugin-api.md`), a SQLite schema change, a widened plugin sandbox, new `unsafe`, a test that would have to be disabled, an architectural decision not yet under "Wichtige Design-Entscheidungen", an AC that turns out wrong.
 - **Sizing** — one session builds about one M task (3–6 files, ~400 changed lines); a bigger feature is split into several specs.
 - **Commits** — Conventional Commits (release-please: `feat` and `fix` start a release), one concept per commit, scopes `core`, `extractors`, `plugin-runtime`, `server`, `cli`, `web-ui`, `ui`, `sdk`, `plugins`, `tauri`, `docker`, `spec`. Example: `feat(core): resume DASH downloads per segment (AC-02, AC-03)`.
-- **Improve** — for `/improve`. Serve the UI: `pnpm build:web-ui`, then `KRAKE_CONFIG_DIR=<scratch>/cfg KRAKE_SETUP_USER=admin KRAKE_SETUP_PASSWORD=<8+ chars> cargo run -p krake-server` from a scratch working directory (downloads land in `./downloads`), URL `http://127.0.0.1:1516/`; a builder's worktree is served with `pnpm exec vite dev --port <p> --strictPort` in its `web-ui/`, which proxies `/api` to that server. Playwright is not a dependency of this repository: `sweep.mjs --pkg <dir>` needs a folder whose `package.json` resolves the preinstalled `playwright`. Project checks: `node scripts/ui-lint.mjs` (hard bans, inline-style budget that only ratchets down; `--update` locks an improvement in), `pnpm --filter @amigo-labs/krake-ui check` (contrast pairs, primitives compile), `pnpm --filter @amigo-labs/krake-web-ui check`, `test` and `build`. Covering tests: `web-ui/test/*.test.ts` (grep for the target's helpers in `web-ui/src/lib/`); there is no browser suite. Stress setups live in the run's scratch folder: log in once and reuse the session cookie, set `localStorage` `locale` (`en` / `de`) and `theme`, seed downloads through `POST /api/v1/downloads` (see Gotchas for local test servers). Builder constraints: only the tokens of `packages/ui/src/tokens.css` (one accent, no raw colours), primitives from `packages/ui`, classes in `<style>` blocks rather than new `style=` attributes, every string through `tr()` with both languages in `web-ui/src/lib/i18n.ts`, keep the row classes `.dl-item`, `.dl-open`, `.dl-check`, `.dl-meta` and every accessible name, do not regress `docs/specs/ui-review-2026-07.md`.
+- **Improve** — for `/improve`. Serve the UI: `pnpm build:web-ui`, then `KRAKE_CONFIG_DIR=<scratch>/cfg KRAKE_SETUP_USER=admin KRAKE_SETUP_PASSWORD=<8+ chars> cargo run -p krake-server` from a scratch working directory (downloads land in `./downloads`), URL `http://127.0.0.1:1516/`; a builder's worktree is served with `pnpm exec vite dev --port <p> --strictPort` in its `web-ui/`, which proxies `/api` to that server. Playwright is not a dependency of this repository: `sweep.mjs --pkg <dir>` needs a folder whose `package.json` resolves the preinstalled `playwright`. Project checks: `node scripts/ui-lint.mjs` (hard bans, inline-style budget that only ratchets down; `--update` locks an improvement in), `pnpm --filter @amigo-labs/krake-ui check` (contrast pairs, theme aliases, primitives compile), `pnpm --filter @amigo-labs/krake-web-ui check`, `test` and `build`. Covering tests: `web-ui/test/*.test.ts` (grep for the target's helpers in `web-ui/src/lib/`); there is no browser suite. Stress setups live in the run's scratch folder: log in once and reuse the session cookie, set `localStorage` `locale` (`en` / `de`) and `theme`, seed downloads through `POST /api/v1/downloads` (see Gotchas for local test servers). Builder constraints: only the tokens of `packages/ui/src/tokens.css` (the shared amigo theme, one accent, no raw colours, no glow), primitives from `packages/ui`, classes in `<style>` blocks rather than new `style=` attributes, every string through `tr()` with both languages in `web-ui/src/lib/i18n.ts`, keep the row classes `.dl-item`, `.dl-open`, `.dl-check`, `.dl-meta` and every accessible name, do not regress `docs/specs/ui-review-2026-07.md`.
 - **Branches** — changes reach `main` through PRs; feature branch `feat/<spec-name>`.
 
 <!-- amigo-skills:begin spec-workflow -->
