@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.2](https://github.com/amigo-labs/amigo-krake/compare/v0.1.1...v0.1.2) (2026-11-16)
+
+
+### Bug Fixes
+
+* **cli:** link OpenSSL in the aarch64 Linux release build ([47b8485](https://github.com/amigo-labs/amigo-krake/commit/47b8485328d5a850b5581cf638e2f16a59ae99ad))
+* **release:** installers, aarch64 Linux and Windows release builds ([a60930f](https://github.com/amigo-labs/amigo-krake/commit/a60930f198e07acd14e290fe3f85a06500994d79))
+
 ## [0.1.1](https://github.com/amigo-labs/amigo-krake/compare/v0.1.0...v0.1.1) (2026-11-15)
 
 
