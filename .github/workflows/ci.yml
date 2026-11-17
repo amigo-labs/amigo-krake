@@ -74,6 +74,35 @@ jobs:
       - name: Test
         run: cargo test --workspace --exclude krake-desktop --locked
 
+  registry-check:
+    # A plugin whose source changed must raise its version above the one on
+    # the published `registry` branch (docs/specs/plugin-registry.md, AC-13).
+    # Reads git data only — no secret, so it works for fork PRs.
+    name: Plugin registry check
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@1.99.0
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install protobuf compiler, clang and lld
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler clang lld
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: false
+
+      - name: Build krake and the plugin host
+        run: |
+          mkdir -p web-ui/dist
+          cargo build --locked -p krake-cli -p krake-plugin-runtime --bins
+
+      - name: Check plugins against the published registry
+        run: ./target/debug/krake plugins registry check
+
   release-build-guard:
     # The release profile runs the build.rs key guards (plugin registry and
     # self-update). `cargo check --release` exercises them without the cost of
