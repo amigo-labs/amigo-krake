@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/amigo-labs/amigo-krake/compare/v0.1.4...v0.1.5) (2026-11-17)
+
+
+### Bug Fixes
+
+* **web-ui:** compact downloads toolbar on phones ([062236c](https://github.com/amigo-labs/amigo-krake/commit/062236cd79f1edeaeb3973166f26de73066c4208))
+
 ## [0.1.4](https://github.com/amigo-labs/amigo-krake/compare/v0.1.3...v0.1.4) (2026-11-17)
 
 
