@@ -1,3 +1,4 @@
+mod plugins_remote;
 mod registry_cmd;
 
 use std::path::PathBuf;
@@ -166,8 +167,17 @@ enum PluginAction {
     Enable { id: String },
     /// Login to a plugin account
     Login { id: String },
-    /// Update plugins (all or specific)
-    Update { id: Option<String> },
+    /// Update installed plugins on the paired server (all, or one id). Asks
+    /// before applying an update that allows new hosts.
+    Update {
+        id: Option<String>,
+        /// Approve updates that widen network access without prompting
+        #[arg(long)]
+        yes: bool,
+        /// Paired server alias (defaults to the default remote)
+        #[arg(long)]
+        remote: Option<String>,
+    },
     /// Install a plugin from the registry on the paired server. Shows the
     /// hosts the plugin may contact and asks for confirmation first.
     Install {
@@ -179,8 +189,13 @@ enum PluginAction {
         #[arg(long)]
         remote: Option<String>,
     },
-    /// Search the plugin registry
-    Search { query: String },
+    /// Search the plugin registry of the paired server
+    Search {
+        query: String,
+        /// Paired server alias (defaults to the default remote)
+        #[arg(long)]
+        remote: Option<String>,
+    },
     /// Maintainer commands that build, sign, check and publish the plugin
     /// registry from this repository.
     #[command(hide = true)]
@@ -1276,8 +1291,15 @@ async fn main() -> anyhow::Result<()> {
                 plugins_install(&id, yes, remote.as_deref()).await?;
             }
             PluginAction::Registry { action } => registry_cmd::run(action).await?,
-            PluginAction::Update { .. } | PluginAction::Search { .. } => {
-                println!("Plugin updates require the server. Use the web UI or API.");
+            PluginAction::Search { query, remote } => {
+                let target = plugins_remote::target(&remotes::load(), remote.as_deref())?;
+                plugins_remote::print_search(&plugins_remote::search(&target, &query).await?);
+            }
+            PluginAction::Update { id, yes, remote } => {
+                let target = plugins_remote::target(&remotes::load(), remote.as_deref())?;
+                let mut approver = plugins_remote::CliApprover { yes };
+                let summary = plugins_remote::update(&target, id.as_deref(), &mut approver).await?;
+                plugins_remote::report_update(&summary)?;
             }
         },
 
