@@ -27,7 +27,6 @@ impl PluginUpdater {
         }
     }
 
-    /// Check for available plugin updates.
     /// The registry this updater reads.
     pub fn config(&self) -> &RegistryConfig {
         &self.config
@@ -38,6 +37,7 @@ impl PluginUpdater {
         crate::registry::load_index(&self.client, &self.config).await
     }
 
+    /// Check for available plugin updates.
     pub async fn check_updates(&self) -> Result<Vec<PluginUpdateInfo>, crate::Error> {
         let index = registry::fetch_index(&self.client, &self.config).await?;
         let installed = self.loader.list_plugins().await;
