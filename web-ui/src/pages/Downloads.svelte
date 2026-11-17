@@ -207,6 +207,23 @@
     await persistOrder(snapshot);
   }
 
+  // The toolbar only makes sense once there is something to filter, sort or
+  // search. Counted before the protocol filter so a filter never hides it.
+  let hasAny = $derived($downloads.length + $usenetDownloads.length > 0 || !$downloadsLoaded);
+
+  // A phone has neither Ctrl+N nor drag & drop, and its bottom nav already
+  // carries the add button, so the empty state shows no second one there.
+  let coarse = $state(
+    typeof matchMedia !== "undefined" && matchMedia("(pointer: coarse)").matches,
+  );
+  $effect(() => {
+    if (typeof matchMedia === "undefined") return;
+    const mq = matchMedia("(pointer: coarse)");
+    const update = () => (coarse = mq.matches);
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  });
+
   const protocolOptions = $derived([
     { value: "all", label: tr($locale, "protocol.all") },
     { value: "http", label: "HTTP" },
@@ -214,7 +231,20 @@
   ]);
 </script>
 
+{#snippet selectChip()}
+  <Chip
+    size="sm"
+    icon="check"
+    selected={batchMode}
+    count={batchMode ? $selectedIds.size : undefined}
+    onclick={handleSelectAll}
+    aria-pressed={batchMode}
+    aria-label={tr($locale, "downloads.select_all")}
+  />
+{/snippet}
+
 <div class="dl-page">
+  {#if hasAny}
   <div class="toolbar-sticky">
     <!-- One line at every width: in a narrow toolbar the search field gives
          way to the sort and density controls and takes the whole line while
@@ -256,9 +286,7 @@
           onchange={setViewMode}
         />
       </div>
-    </div>
 
-    <div class="tool-row filter-row">
       <!-- Below the desktop breakpoint the header has no room for this, and
            there was previously no mobile equivalent at all: under 640px the
            HTTP/Usenet switch simply did not exist. -->
@@ -275,6 +303,14 @@
         </div>
       {/if}
 
+      <!-- On the narrowest toolbars this copy sits beside the protocol switch
+           so the status chips keep the full width. -->
+      {#if filtered.length > 0}
+        <div class="select-wrap select-head">{@render selectChip()}</div>
+      {/if}
+    </div>
+
+    <div class="tool-row filter-row">
       <div role="group" aria-label={tr($locale, "downloads.filter_by_status")} class="chip-rail">
         {#each filters as f}
           <Chip
@@ -290,15 +326,7 @@
       </div>
 
       {#if filtered.length > 0}
-        <Chip
-          size="sm"
-          icon="check"
-          selected={batchMode}
-          count={batchMode ? $selectedIds.size : undefined}
-          onclick={handleSelectAll}
-          aria-pressed={batchMode}
-          aria-label={tr($locale, "downloads.select_all")}
-        />
+        <div class="select-wrap select-tail">{@render selectChip()}</div>
       {/if}
     </div>
 
@@ -311,6 +339,7 @@
       </p>
     {/if}
   </div>
+  {/if}
 
   {#if batchMode}
     <div
@@ -372,12 +401,14 @@
       <EmptyState
         image="/icon.svg"
         title={tr($locale, "downloads.no_downloads")}
-        description={tr($locale, "downloads.add_hint")}
+        description={tr($locale, coarse ? "downloads.add_hint_touch" : "downloads.add_hint")}
       >
         {#snippet action()}
-          <Button variant="solid" iconLeft="plus" onclick={() => openAddPanel()}>
-            {tr($locale, "downloads.add_first")}
-          </Button>
+          {#if !coarse}
+            <Button variant="solid" iconLeft="plus" onclick={() => openAddPanel()}>
+              {tr($locale, "downloads.add_first")}
+            </Button>
+          {/if}
         {/snippet}
       </EmptyState>
     {/if}
@@ -485,6 +516,18 @@
     align-items: flex-start;
   }
 
+  .select-wrap {
+    display: flex;
+  }
+
+  .select-head {
+    display: none;
+  }
+
+  .sort-field {
+    position: relative;
+  }
+
   /* Every status stays on screen: the chips wrap instead of scrolling
      sideways, where "Completed" and "Failed" sat off screen on a phone. */
   .chip-rail {
@@ -493,6 +536,16 @@
     flex-wrap: wrap;
     gap: 0.375rem 0.5rem;
     min-width: 0;
+  }
+
+  @container toolbar (max-width: 22rem) {
+    .select-head {
+      display: flex;
+    }
+
+    .select-tail {
+      display: none;
+    }
   }
 
   @container toolbar (max-width: 30rem) {
@@ -506,9 +559,31 @@
       flex-basis: 100%;
     }
 
-    .sort-icon,
-    .density :global(.segment svg) {
-      display: none;
+    /* Density collapses to its two icons; the labels stay in the accessible
+       names. */
+    .density :global(.segmented .segment) {
+      font-size: 0;
+      gap: 0;
+    }
+
+    .density :global(.segmented .segment svg) {
+      width: 16px;
+      height: 16px;
+    }
+
+    /* Sort collapses to its icon; the transparent select keeps the whole
+       box as the touch target and the native picker. */
+    .sort-field {
+      width: 2.75rem;
+      justify-content: center;
+      padding: 0;
+    }
+
+    .sort-select {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      opacity: 0;
     }
   }
 </style>

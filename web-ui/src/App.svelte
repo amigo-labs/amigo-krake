@@ -131,11 +131,11 @@
     { id: "settings", label: "Settings", icon: "gear" },
   ];
 
-  const protocolOptions: { value: ProtocolFilter; label: string }[] = [
-    { value: "all", label: "ALL" },
+  const protocolOptions = $derived<{ value: ProtocolFilter; label: string }[]>([
+    { value: "all", label: tr($locale, "protocol.all") },
     { value: "http", label: "HTTP" },
-    { value: "usenet", label: "USENET" },
-  ];
+    { value: "usenet", label: "Usenet" },
+  ]);
 
   onMount(() => {
     // Gate: decide whether to show Setup / Login / ready before anything
