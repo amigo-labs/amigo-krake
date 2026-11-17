@@ -5,7 +5,7 @@ export type Locale = "en" | "de";
 
 export type TParams = Record<string, string | number>;
 
-const translations: Record<Locale, Record<string, string>> = {
+export const translations: Record<Locale, Record<string, string>> = {
   en: {
     "nav.downloads": "Downloads",
     "downloads.list_label": "Downloads",
@@ -140,6 +140,8 @@ const translations: Record<Locale, Record<string, string>> = {
     "downloads.no_downloads": "No downloads yet",
     "downloads.add_first": "Add your first download",
     "downloads.add_hint": "Ctrl+N to add · Drag & drop supported",
+    "downloads.add_hint_touch": "Tap + to add a download",
+    "protocol.all": "All",
     "downloads.selected": "selected",
     "downloads.select_all": "Select all",
     "downloads.clear_selection": "Clear selection",
@@ -565,6 +567,8 @@ const translations: Record<Locale, Record<string, string>> = {
     "downloads.no_downloads": "Noch keine Downloads",
     "downloads.add_first": "Ersten Download hinzufügen",
     "downloads.add_hint": "Strg+N zum Hinzufügen · Drag & Drop unterstützt",
+    "downloads.add_hint_touch": "Auf + tippen, um einen Download hinzuzufügen",
+    "protocol.all": "Alle",
     "downloads.selected": "ausgewählt",
     "downloads.select_all": "Alle auswählen",
     "downloads.clear_selection": "Auswahl aufheben",
