@@ -68,4 +68,9 @@ ignore = [
     "RUSTSEC-2026-0370", # zvariant
     "RUSTSEC-2026-0371", # zbus_names
     "RUSTSEC-2026-0372", # zvariant_derive
+    # chrono is unmaintained (no vulnerability, no fixed release). Used
+    # directly by krake-core / krake-server and transitively by dash-mpd and
+    # m3u8-rs. Replacement tracked in amigo-labs/amigo-krake#118; remove once
+    # chrono is gone from the tree.
+    "RUSTSEC-2026-0543", # chrono
 ]
