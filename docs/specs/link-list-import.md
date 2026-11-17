@@ -132,11 +132,13 @@ Terms used below:
   is larger than 1 MiB (its size in bytes as UTF-8, for a file its size on
   disk), then nothing is queued and the message says it is too large and
   names the limit.
-- [ ] AC-11 (event): When a list holds more links than fit in one request, or
-  a request fails as a whole (network error, session expired, server error),
-  then every link sent before the failure stays queued, and the result toast
-  states the counts so far plus how many links were not sent because of the
-  failure.
+- [ ] AC-11 (event): When the web UI queues a list of any length within the
+  size limit, then every link reaches the server, however many requests that
+  takes. If one of those requests fails as a whole (network error, session
+  expired, server error), then every link sent before the failure stays
+  queued, no further request is sent, and the result toast states the counts
+  so far plus how many links were not sent. For a share, AC-16 applies
+  instead when the session expired.
 - [ ] AC-12 (always): Every new user-visible string of this spec exists in
   English and German.
 
@@ -148,8 +150,8 @@ Terms used below:
 - [ ] AC-14 (event): When the user shares text to the installed Krake app,
   then Krake joins the shared title, text and URL as lines in that order and
   queues the links by the link list rule, with the result toast of AC-05. If
-  the rule finds no link, Krake queues the first `http://` or `https://` URL
-  found anywhere in the shared text (case-insensitive, ending at whitespace,
+  the rule finds no link in the joined title, text and URL, Krake queues the
+  first `http://` or `https://` URL found anywhere in them (case-insensitive, ending at whitespace,
   trailing `.,;:!?)]}>"'` removed), so a share like "Look at this:
   https://…" still works as it does today.
 - [ ] AC-15 (event): When the user shares one or more text files (with or
@@ -158,8 +160,10 @@ Terms used below:
   the result toast of AC-05.
 - [ ] AC-16 (state): While nobody is logged in, or the session expires before
   a share is queued, Krake keeps the shared content in the browser, shows the
-  login, and queues it after the next successful login in that browser. A
-  second share that arrives meanwhile is queued too. Shared content older
+  login, and queues it after the next successful login in that browser;
+  links of a share already sent before the session expired are not sent
+  twice. A second share that arrives meanwhile is queued too. Each share is
+  queued exactly once, also with several Krake tabs open. Shared content older
   than 30 minutes is discarded without queueing, and the user sees a toast
   that a share expired.
 - [ ] AC-17 (error): If a shared file is not text or is larger than 1 MiB,
@@ -176,7 +180,7 @@ Terms used below:
 - [ ] AC-19 (option): Where the file argument of `--list` is `-`, the CLI
   reads the list from standard input.
 - [ ] AC-20 (error): If the file of `--list` does not exist, cannot be read
-  or is larger than 1 MiB, then the CLI prints the path and the reason,
+  or is larger than 1 MiB (for `-`: more than 1 MiB on standard input), then the CLI prints the path and the reason,
   queues nothing and exits with a non-zero status.
 - [ ] AC-21 (error): The CLI exits with a non-zero status if the list yields
   no link or every link was rejected; otherwise (at least one link queued or
@@ -194,11 +198,14 @@ Terms used below:
   `trim()` or Rust `trim()` blindly: AC-01 defines whitespace, and the
   fixtures with U+FEFF and U+00A0 catch the difference.
 - Web UI queueing goes through `POST /api/v1/downloads/batch` (SSRF guard
-  per URL, `{ids, errors}` with status 207 on partial failure), in chunks of
-  at most 500 links so a request stays below the 2 MiB body default. An error
+  per URL, `{ids, errors}` with status 207 on partial failure), in chunks
+  whose JSON body stays at or below 1 MiB, well under the 2 MiB body default
+  (a 1 MiB list can grow past 2 MiB as JSON once invalid bytes become U+FFFD
+  and quotes are escaped). An error
   string has the form `"<url>: <reason>"`; the client matches it by the URL
   it sent. *Already queued* is decided before sending from the download list
-  the UI already holds.
+  the UI already holds; a link the server answers with an id that was in
+  that list counts as *already queued* too.
 - Android: Web Share Target with files needs `method: "POST"` and
   `enctype: "multipart/form-data"` in the manifest; the service worker
   answers that POST, stores the shared parts with a timestamp (IndexedDB) and
@@ -230,8 +237,10 @@ Terms used below:
 | Share arrives while logged out, login 40 minutes later | Share discarded, "share expired" toast |
 | Two shares while logged out | Both queued after login |
 | Line with `http://127.0.0.1/…` | Rejected by the private address guard; reported (AC-08) |
-| 5 000 links in a 1 MiB file | Sent in chunks of 500; all queued |
-| Network drops after the 3rd of 10 chunks | 1 500 links queued, toast says 3 500 were not sent (AC-11) |
+| 5 000 links in a 1 MiB file | Sent in several requests; all queued |
+| Network drops after the 3rd of 10 requests | Links of 3 requests queued, toast says how many were not sent (AC-11) |
+| Session expires in the middle of a share | Sent links stay queued; the rest waits for the next login (AC-16) |
+| Two Krake tabs open when the user logs in after a share | The share is queued once |
 | `krake add --list` while `krake-server` holds the same database | Same behavior as `krake add --dlc` today (not changed by this spec) |
 
 ## Assumptions
@@ -243,6 +252,7 @@ Terms used below:
 | Bytes that are not UTF-8 are replaced, not decoded as Windows-1252 | URLs are ASCII in practice, and guessing an encoding needs a detector both implementations must agree on | A non-ASCII path in a Windows-1252 file is mangled |
 | The CLI does not apply the server's private address guard | `krake add --dlc` and direct `krake get` do not either: the CLI is the user's own downloader | None beyond today's |
 | A pending share expires after 30 minutes | Long enough to log in, short enough that an old share does not surprise the user days later | User must share again after a long pause |
+| Another client queues the same URL between the UI's last list update and the request | The race is a few hundred milliseconds wide and the WebSocket keeps the list current | That link counts as *queued* although no new download was created |
 | A completed or failed download with the same URL does not block queueing | That is how the coordinator dedups today (active downloads only); re-downloading is a valid wish | A user may download a file twice |
 
 ## Open questions
