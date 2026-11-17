@@ -2,7 +2,8 @@ name: Plugin registry
 
 # Builds the plugin registry from plugins/ with the real plugin runtime, signs
 # index.json with the update signing key and pushes the result to the branch
-# `registry`, which Cloudflare Pages serves at
+# `registry`, which the Cloudflare Worker `amigo-krake` (Workers Builds,
+# static assets from the branch's own wrangler.jsonc) serves at
 # https://krake-registry.amigo-labs.dev (docs/specs/plugin-registry.md).
 #
 # Each run publishes the full state of its commit, never a delta, so a run
