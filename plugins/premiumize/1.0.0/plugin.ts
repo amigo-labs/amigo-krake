@@ -1,0 +1,125 @@
+/// <reference path="../../types/krake.d.ts" />
+
+// Premiumize Multi-Hoster Plugin
+// Converts premium hoster links to direct download links via Premiumize API.
+
+const API_BASE = "https://www.premiumize.me/api";
+
+const SUPPORTED_DOMAINS = [
+    "1fichier.com", "rapidgator.net", "uploaded.net", "uploaded.to",
+    "turbobit.net", "nitroflare.com", "filefactory.com", "ddownload.com",
+    "katfile.com", "uploadgig.com", "alfafile.net", "k2s.cc",
+    "keep2share.cc", "fboom.me", "tezfiles.com", "hitfile.net",
+    "file.al", "clicknupload.co", "uptobox.com",
+];
+
+function buildUrlPattern(): string {
+    const escaped = SUPPORTED_DOMAINS.map(d => d.replace(/\./g, "\\."));
+    return "https?://(?:www\\.)?" + "(?:" + escaped.join("|") + ")/.+";
+}
+
+function getApiKey(): string {
+    const key = krake.storageGet("api_key");
+    if (!key) {
+        throw new Error(
+            "Premiumize API key not configured. Go to Settings → Plugins → Premiumize and enter your API key."
+        );
+    }
+    return key;
+}
+
+function parseApiJson(body: string, label: string): any {
+    try {
+        return JSON.parse(body);
+    } catch (e) {
+        throw new Error("Premiumize " + label + " returned invalid JSON: " + (e as Error).message);
+    }
+}
+
+module.exports = {
+    id: "premiumize",
+    name: "Premiumize",
+    version: "1.0.0",
+    apiVersion: 1,
+    permissions: { domains: ["www.premiumize.me"] },
+    description: "Premium link generator — unrestricts links from 60+ file hosters",
+    author: "amigo-labs",
+    urlPattern: buildUrlPattern(),
+    pluginType: "multi-hoster" as PluginTypeHint,
+
+    resolve(url: string): DownloadPackage {
+        const apiKey = getApiKey();
+
+        const resp = krake.httpPostForm(
+            API_BASE + "/transfer/directdl",
+            { src: url },
+            { headers: { "Authorization": "Bearer " + apiKey } },
+        );
+
+        if (resp.status !== 200) {
+            throw new Error("Premiumize API error (" + resp.status + "): " + resp.body);
+        }
+
+        const data = parseApiJson(resp.body, "/transfer/directdl");
+
+        if (data.status !== "success" || !data.content || data.content.length === 0) {
+            throw new Error("Premiumize could not resolve: " + url + " — " + (data.message || "unknown error"));
+        }
+
+        const downloads: DownloadInfo[] = data.content.map((item: any) => ({
+            url: item.link,
+            filename: item.path ? item.path.split("/").pop() : null,
+            filesize: item.size || null,
+            chunks_supported: true,
+            max_chunks: null,
+            headers: null,
+            cookies: null,
+            wait_seconds: null,
+            mirrors: [],
+        }));
+
+        return {
+            name: data.content[0].path ? data.content[0].path.split("/").pop() : "Download",
+            downloads,
+        };
+    },
+
+    supportsPremium(): boolean {
+        return true;
+    },
+
+    login(username: string, password: string): boolean {
+        // Validate the key BEFORE persisting it, so a bad key isn't left in
+        // storage on failure and reused by resolve()/checkOnline().
+        const resp = krake.httpGet(API_BASE + "/account/info", {
+            headers: { "Authorization": "Bearer " + password },
+        });
+        if (resp.status === 200) {
+            const user = parseApiJson(resp.body, "/account/info");
+            if (user.status === "success") {
+                krake.storageSet("api_key", password);
+                krake.logInfo("Authenticated as: " + user.customer_id + " (Premium until: " + user.premium_until + ")");
+                return true;
+            }
+        }
+        krake.logError("Premiumize authentication failed: " + resp.body);
+        return false;
+    },
+
+    checkOnline(url: string): "online" | "offline" | "unknown" {
+        const apiKey = krake.storageGet("api_key");
+        if (!apiKey) return "unknown";
+
+        const resp = krake.httpPostForm(
+            API_BASE + "/transfer/directdl",
+            { src: url },
+            { headers: { "Authorization": "Bearer " + apiKey } },
+        );
+
+        if (resp.status === 200) {
+            const data = parseApiJson(resp.body, "/transfer/directdl");
+            return data.status === "success" ? "online" : "offline";
+        }
+        return "unknown";
+    },
+} satisfies KrakePlugin;

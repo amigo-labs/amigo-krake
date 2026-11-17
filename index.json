@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "plugins": [
+    {
+      "id": "alldebrid",
+      "name": "AllDebrid",
+      "version": "1.0.0",
+      "description": "Premium link generator — unrestricts links from 70+ file hosters",
+      "author": "amigo-labs",
+      "url_pattern": "https?://(?:www\\.)?(?:1fichier\\.com|rapidgator\\.net|uploaded\\.net|uploaded\\.to|turbobit\\.net|nitroflare\\.com|filefactory\\.com|ddownload\\.com|katfile\\.com|uploadgig\\.com|alfafile\\.net|k2s\\.cc|keep2share\\.cc|fboom\\.me|tezfiles\\.com|hitfile\\.net|file\\.al|clicknupload\\.co|uptobox\\.com|mega\\.nz|mediafire\\.com|filestore\\.to|hexupload\\.net)/.+",
+      "min_app_version": null,
+      "sha256": "e4a123bfafa0730bf541fafdcb9dc6cb795f71364df15667a571bee4cd5f719f",
+      "download_url": "https://krake-registry.amigo-labs.dev/plugins/alldebrid/1.0.0/plugin.ts",
+      "tags": [
+        "multi-hoster"
+      ],
+      "api_version": 1,
+      "permissions": {
+        "domains": [
+          "api.alldebrid.com"
+        ]
+      }
+    },
+    {
+      "id": "generic-http",
+      "name": "Generic HTTP",
+      "version": "5.0.0",
+      "description": "Generic fallback — detects media and download links on any page",
+      "author": "",
+      "url_pattern": "https?://.+",
+      "min_app_version": null,
+      "sha256": "2b89f3a065ad0b3c2dc71f7d5123d2f14f1e14c203a1dd6fec65a521959950a4",
+      "download_url": "https://krake-registry.amigo-labs.dev/plugins/generic-http/5.0.0/plugin.ts",
+      "tags": [
+        "generic"
+      ],
+      "api_version": 1,
+      "permissions": null
+    },
+    {
+      "id": "premiumize",
+      "name": "Premiumize",
+      "version": "1.0.0",
+      "description": "Premium link generator — unrestricts links from 60+ file hosters",
+      "author": "amigo-labs",
+      "url_pattern": "https?://(?:www\\.)?(?:1fichier\\.com|rapidgator\\.net|uploaded\\.net|uploaded\\.to|turbobit\\.net|nitroflare\\.com|filefactory\\.com|ddownload\\.com|katfile\\.com|uploadgig\\.com|alfafile\\.net|k2s\\.cc|keep2share\\.cc|fboom\\.me|tezfiles\\.com|hitfile\\.net|file\\.al|clicknupload\\.co|uptobox\\.com)/.+",
+      "min_app_version": null,
+      "sha256": "5a264b012815b3453aa6c0ac95b7e35d4fbc98c0ec0230486ad8d363e9112dca",
+      "download_url": "https://krake-registry.amigo-labs.dev/plugins/premiumize/1.0.0/plugin.ts",
+      "tags": [
+        "multi-hoster"
+      ],
+      "api_version": 1,
+      "permissions": {
+        "domains": [
+          "www.premiumize.me"
+        ]
+      }
+    },
+    {
+      "id": "real-debrid",
+      "name": "Real-Debrid",
+      "version": "1.0.0",
+      "description": "Premium link generator — unrestricts links from 80+ file hosters",
+      "author": "amigo-labs",
+      "url_pattern": "https?://(?:www\\.)?(?:1fichier\\.com|rapidgator\\.net|uploaded\\.net|uploaded\\.to|turbobit\\.net|nitroflare\\.com|filefactory\\.com|ddownload\\.com|katfile\\.com|megaupload\\.nz|filestore\\.to|hexupload\\.net|uploadgig\\.com|alfafile\\.net|filerio\\.in|filenext\\.com|isra\\.cloud|worldbytez\\.com|k2s\\.cc|keep2share\\.cc|fboom\\.me|tezfiles\\.com|hitfile\\.net|file\\.al|clicknupload\\.co|filespace\\.com|uptobox\\.com)/.+",
+      "min_app_version": null,
+      "sha256": "1aca43224f22f6483ae2a704d3d94fd7283e42a29977e35ced0b9e87f6f33781",
+      "download_url": "https://krake-registry.amigo-labs.dev/plugins/real-debrid/1.0.0/plugin.ts",
+      "tags": [
+        "multi-hoster"
+      ],
+      "api_version": 1,
+      "permissions": {
+        "domains": [
+          "api.real-debrid.com"
+        ]
+      }
+    },
+    {
+      "id": "xfilesharing",
+      "name": "XFileSharingPro (Generic)",
+      "version": "1.0.0",
+      "description": "Generic plugin for 50+ file hosting sites based on XFileSharingPro",
+      "author": "amigo-labs",
+      "url_pattern": "https?://(?:www\\.)?(?:ddownload\\.com|katfile\\.com|hexupload\\.net|clicknupload\\.co|file\\.al|uploadrar\\.com|filerio\\.in|filenext\\.com|isra\\.cloud|worldbytez\\.com|uploadbank\\.com|fastclick\\.to|dailyuploads\\.net|userupload\\.net|mx-sh\\.net|streamvid\\.net|upstream\\.to|hotlink\\.cc|douploads\\.net|uploadev\\.org|sfile\\.mobi|anonfiles\\.la|fikper\\.com|filelox\\.com|down\\.fast-down\\.com|ouo\\.press|drop\\.download|mexa\\.sh)/.+",
+      "min_app_version": null,
+      "sha256": "c8d4a12e83d8320312232e070c5b780d27f53288d64e36020a83243356f693a0",
+      "download_url": "https://krake-registry.amigo-labs.dev/plugins/xfilesharing/1.0.0/plugin.ts",
+      "tags": [
+        "hoster"
+      ],
+      "api_version": 1,
+      "permissions": null
+    },
+    {
+      "id": "youtube",
+      "name": "YouTube",
+      "version": "1.1.0",
+      "description": "Download videos from YouTube",
+      "author": "amigo-labs",
+      "url_pattern": "https?://(www\\.)?(youtube\\.com/(watch|shorts|embed)|youtu\\.be/)",
+      "min_app_version": null,
+      "sha256": "6370349ae2fc21dd8c059dcf299d41e14cb9949c04699c0edc4c7878fcaeee22",
+      "download_url": "https://krake-registry.amigo-labs.dev/plugins/youtube/1.1.0/plugin.ts",
+      "tags": [
+        "hoster"
+      ],
+      "api_version": 1,
+      "permissions": {
+        "domains": [
+          "www.youtube.com"
+        ]
+      }
+    }
+  ]
+}
