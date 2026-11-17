@@ -268,10 +268,10 @@ files.
 | AC-11 | `registry_cmd::tests::ac11_moved_branch_fails_without_overwriting_then_rerun_succeeds`, `ac11_unverifiable_signature_is_never_committed` (crates/cli/src/registry_cmd.rs) | built |  |
 | AC-12 |      | open   |        |
 | AC-13 |      | open   |        |
-| AC-14 |      | open   |        |
-| AC-15 |      | open   |        |
+| AC-14 | `config::tests::ac14_default_registry_url_is_the_published_registry` (crates/core/src/config.rs), `registry::tests::ac14_default_index_url_is_the_published_registry` (crates/plugin-runtime/src/registry.rs), `ac14_server_and_runtime_default_to_the_same_registry` (crates/server/tests/api_tests.rs) | built |  |
+| AC-15 | `config::tests::ac15_legacy_registry_url_is_replaced_on_load_and_written_on_save`, `ac15_custom_registry_url_is_kept` (crates/core/src/config.rs) | built |  |
 | AC-16 |      | open   |        |
-| AC-17 |      | open   |        |
+| AC-17 | `ac17_suggest_uses_the_configured_registry`, `ac17_unreachable_registry_means_no_suggestion` (crates/server/tests/api_tests.rs) | built |  |
 | AC-18 |      | open   |        |
 | AC-19 |      | open   |        |
 | AC-20 |      | open   |        |
@@ -302,3 +302,11 @@ files.
 - 2026-11-17 (build): Publishing works in a temporary `git worktree` of the
   checkout, so it reuses the checkout's credentials, and pushes without
   force; a run that lost a race fails (AC-11).
+- 2026-11-17 (build): `ac17_unreachable_registry_means_no_suggestion` was
+  green before the fix (the old code also failed to reach the dead default);
+  the red run of AC-17 is `ac17_suggest_uses_the_configured_registry`.
+- 2026-11-17 (build): The default URL is a constant in both `krake-core`
+  (config) and `krake-plugin-runtime` (registry client), which do not depend
+  on each other; a server test pins them equal.
+- 2026-11-17 (build): `build_test_state` now uses the configured registry URL
+  without an on-disk index cache, so server tests cannot share a cached index.

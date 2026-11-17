@@ -53,7 +53,13 @@ pub fn build_test_state(config: Config) -> api::AppState {
             .expect("Failed to init plugin loader"),
     );
 
-    let registry_config = krake_plugin_runtime::registry::RegistryConfig::default();
+    // The configured registry, like `main.rs`, without an on-disk cache so
+    // tests never share or leave behind an index.
+    let mut registry_config = krake_plugin_runtime::registry::RegistryConfig::for_index(
+        config.update.plugin_registry_url.clone(),
+        false,
+    );
+    registry_config.cache_path = None;
     let plugin_updater = Arc::new(PluginUpdater::new(
         registry_config,
         http_client.clone(),

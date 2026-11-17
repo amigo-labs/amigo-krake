@@ -1076,3 +1076,73 @@ async fn add_rss_feed_rejects_private_ip_url() {
         "RFC1918 RSS URL must be rejected"
     );
 }
+
+// =============================================================================
+// Plugin suggestion uses the configured registry (plugin-registry AC-17)
+// =============================================================================
+
+/// Serve an unsigned registry index with one plugin matching `suggest.test`.
+async fn spawn_registry() -> SocketAddr {
+    let index = r#"{"schema_version":1,"plugins":[{"id":"suggested","name":"Suggested",
+        "version":"1.0.0","description":"","author":"","url_pattern":"https?://suggest\\.test/.+",
+        "min_app_version":null,"sha256":"00","download_url":"https://x.test/p.ts","tags":[]}]}"#;
+    let app = axum::Router::new().route(
+        "/index.json",
+        axum::routing::get(move || async move { index }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    addr
+}
+
+async fn spawn_server_with_registry(registry_url: String) -> SocketAddr {
+    let mut config = Config {
+        max_concurrent_downloads: 0,
+        ..Config::default()
+    };
+    config.update.plugin_registry_url = registry_url;
+    let state = krake_server::build_test_state(config);
+    let app = krake_server::build_test_router(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    addr
+}
+
+async fn suggest(addr: SocketAddr, url: &str) -> serde_json::Value {
+    test_client()
+        .post(format!("{}/api/v1/plugins/suggest", base_url(addr)))
+        .json(&serde_json::json!({ "url": url }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn ac17_suggest_uses_the_configured_registry() {
+    let registry = spawn_registry().await;
+    let addr = spawn_server_with_registry(format!("http://{registry}/index.json")).await;
+    let body = suggest(addr, "https://suggest.test/file/1").await;
+    assert_eq!(body["found"], true, "{body}");
+    assert_eq!(body["plugin_id"], "suggested");
+}
+
+#[tokio::test]
+async fn ac17_unreachable_registry_means_no_suggestion() {
+    // Nothing listens on port 9 (discard) on loopback in the test sandbox.
+    let addr = spawn_server_with_registry("http://127.0.0.1:9/index.json".into()).await;
+    let body = suggest(addr, "https://suggest.test/file/1").await;
+    assert_eq!(body["found"], false, "{body}");
+}
+
+#[test]
+fn ac14_server_and_runtime_default_to_the_same_registry() {
+    assert_eq!(
+        krake_core::config::DEFAULT_PLUGIN_REGISTRY_URL,
+        krake_plugin_runtime::registry::DEFAULT_INDEX_URL
+    );
+}
