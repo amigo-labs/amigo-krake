@@ -3,6 +3,7 @@
   "include-v-in-tag": true,
   "include-component-in-tag": false,
   "bootstrap-sha": "b05f2a4173048d8d03d053527eccab04dd5ecb49",
+  "pull-request-title-pattern": "chore: release Krake ${version}",
   "packages": {
     ".": {
       "release-type": "simple",
