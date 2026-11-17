@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.3](https://github.com/amigo-labs/amigo-krake/compare/v0.1.2...v0.1.3) (2026-11-17)
+
+
+### Features
+
+* **cli:** plugins search and update against the paired server (AC-18 to AC-21) ([a246525](https://github.com/amigo-labs/amigo-krake/commit/a246525387e65ebae85e4eaaffa5b0a1fea17de2))
+* **cli:** registry build, sign, check and publish commands (AC-10, AC-11) ([b469da1](https://github.com/amigo-labs/amigo-krake/commit/b469da1e2ea748ef3f0761b75ed162181d84c2cb))
+* **plugin-runtime:** build and sign the plugin registry index (AC-01 to AC-09) ([40d9938](https://github.com/amigo-labs/amigo-krake/commit/40d99387870457b06028723cb5937f7333860583))
+
+
+### Bug Fixes
+
+* **core:** default to the published plugin registry and migrate the dead URL (AC-14, AC-15) ([24289a0](https://github.com/amigo-labs/amigo-krake/commit/24289a0b5e814a28335f01668763018abbff72ef))
+* **plugin-runtime:** default registry index URL points at the published registry (AC-14) ([848c2c3](https://github.com/amigo-labs/amigo-krake/commit/848c2c3e88547c4a1d02d1ba607d583916aaf895))
+* **server:** suggest plugins from the configured registry (AC-14, AC-17) ([9b13c0f](https://github.com/amigo-labs/amigo-krake/commit/9b13c0f4735ffabe2ce4dd9295494c36ac560576))
+
 ## [0.1.2](https://github.com/amigo-labs/amigo-krake/compare/v0.1.1...v0.1.2) (2026-11-16)
 
 
