@@ -204,6 +204,11 @@ files.
   `index.json`, `index.json.sig`, `plugins/<id>/<version>/plugin.<ts|js>`. Orphan
   branch, created by the first publish run. Plain static files; Cloudflare
   serves `.ts` with whatever type it picks, the client only checks bytes.
+- **Hosting config:** the publish step writes `wrangler.jsonc` (Worker
+  `amigo-krake`, the whole tree as static assets, no Worker code) and
+  `.assetsignore` into the branch root, so Workers Builds deploys the branch
+  as is. `main` keeps its own `wrangler.jsonc` for the unrelated
+  `amigo-downloader` redirect Worker.
 - **Org setup (manual, once):** Cloudflare Pages project connected to this
   repository with production branch `registry`, empty build command, output
   directory `/`, custom domain `krake-registry.amigo-labs.dev`. The workflow
@@ -335,3 +340,9 @@ files.
   state takes an explicit registry config via `build_test_state_with_registry`.
 - 2026-11-17 (build, verification round 1): `docs/plugin-api.md` gained
   "Publishing to the registry"; the publish workflow checks out full history.
+- 2026-11-17 (follow-up): The Cloudflare project turned out to be a Workers
+  project (Workers Builds) with the custom domain attached, not Pages. It
+  needs a Worker configuration in the deployed branch, so the publish step
+  writes `wrangler.jsonc` + `.assetsignore` (`hosting_config_serves_the_tree_as_static_assets`
+  in crates/cli/src/registry_cmd.rs). Project settings: production branch
+  `registry`, builds of other branches off.
