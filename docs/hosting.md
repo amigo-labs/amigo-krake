@@ -64,8 +64,12 @@ deprecation warning for each one it picks up.
 
 ### Plugin auto-updates
 
-The plugin registry index (`index.json`) is served alongside a detached
-Ed25519 signature (`index.json.sig`). The krake-server binary pins the
+The plugin registry is published at
+`https://krake-registry.amigo-labs.dev/index.json` (the default of
+`update.plugin_registry_url`; configs that still name the old
+`amigo-downloader-plugins` URL are moved to it on load). The index
+(`index.json`) is served alongside a detached Ed25519 signature
+(`index.json.sig`), made with the same key as the self-update archives. The krake-server binary pins the
 signer's public key, verifies the signature on every registry fetch, and
 rejects any tampered or unsigned index. Per-plugin source files are
 additionally SHA-256 pinned in the index.

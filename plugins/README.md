@@ -147,3 +147,30 @@ All access goes through `krake.*` — plugins run sandboxed with no direct netwo
 | `krake.logError(msg)` | Log error |
 | `krake.logDebug(msg)` | Log debug |
 | `console.log/warn/error` | Also available |
+
+## Publishing to the registry
+
+Plugins under `hosters/`, `multi-hosters/` and `extractors/` are published to
+the plugin registry at `https://krake-registry.amigo-labs.dev` on every push to
+`main` (`.github/workflows/registry-publish.yml`). Servers offer them in the
+marketplace (`krake plugins search`, `install`, `update`) and update installed
+copies from there.
+
+- **Raise `version` whenever you change a plugin.** Every published version is
+  kept under `plugins/<id>/<version>/` and never overwritten; the pull-request
+  check "Plugin registry check" fails when a plugin's source changed but its
+  version is not higher than the published one.
+- The index entry comes from loading the plugin with the real runtime: `id`,
+  `name`, `version`, `description`, `author`, `urlPattern`, `apiVersion`,
+  `permissions.domains`, and `pluginType` as its tag. A plugin that does not
+  load, or whose id, SemVer version, host-API version or `urlPattern` is
+  invalid, stops the publish.
+- Try it locally (unsigned, nothing is pushed):
+
+  ```sh
+  cargo build -p krake-cli -p krake-plugin-runtime --bins
+  ./target/debug/krake plugins registry build --out /tmp/registry
+  ./target/debug/krake plugins registry check   # compares with the published branch
+  ```
+
+Details: `docs/specs/plugin-registry.md`.

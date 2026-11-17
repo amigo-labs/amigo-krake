@@ -180,6 +180,10 @@ pub struct PluginUpdateInfo {
     pub requires_approval: bool,
 }
 
+/// Index URL of the published plugin registry. Mirrors
+/// `krake_core::config::DEFAULT_PLUGIN_REGISTRY_URL` (the server tests pin both).
+pub const DEFAULT_INDEX_URL: &str = "https://krake-registry.amigo-labs.dev/index.json";
+
 /// Registry configuration.
 #[derive(Debug, Clone)]
 pub struct RegistryConfig {
@@ -211,7 +215,7 @@ fn compiled_in_verifier() -> Option<[u8; 32]> {
 impl Default for RegistryConfig {
     fn default() -> Self {
         Self {
-            index_url: "https://raw.githubusercontent.com/amigo-labs/amigo-downloader-plugins/main/index.json".into(),
+            index_url: DEFAULT_INDEX_URL.into(),
             cache_path: Some(PathBuf::from("plugins/index.json")),
             cache_max_age_secs: 24 * 60 * 60, // 24 hours
             index_verifier: compiled_in_verifier(),
@@ -718,6 +722,14 @@ pub fn install_artifact(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn ac14_default_index_url_is_the_published_registry() {
+        assert_eq!(
+            super::RegistryConfig::default().index_url,
+            "https://krake-registry.amigo-labs.dev/index.json"
+        );
+    }
+
     use super::*;
 
     fn plugin_with_pattern(id: &str, pattern: &str) -> RegistryPlugin {

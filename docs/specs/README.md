@@ -9,6 +9,7 @@ notes for Krake. The workflow is in `AGENTS.md`, "Spec-driven workflow".
 | - | ---- | ------ | ---------- |
 | 1 | [plugin-wasm-sandbox](plugin-wasm-sandbox.md) | todo | plugin-wasm-guest (done) |
 | 2 | [desktop-app](desktop-app.md) | todo | — (three PRs: P1 embedded server, P2 tray, P3 updater, release and update choice) |
+| 3 | [plugin-registry](plugin-registry.md) | todo | — (org setup: Cloudflare Pages project on branch `registry`, DNS) |
 
 ## Done
 

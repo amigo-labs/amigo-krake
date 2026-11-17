@@ -570,8 +570,9 @@ async fn suggest_plugin(
     State(state): State<AppState>,
     Json(req): Json<SuggestPluginRequest>,
 ) -> Json<SuggestPluginResponse> {
-    let config = krake_plugin_runtime::registry::RegistryConfig::default();
-    let index = krake_plugin_runtime::registry::load_index(&state.http_client, &config).await;
+    // The registry the server is configured with (URL and signature
+    // verification), the same one installs and updates use.
+    let index = state.plugin_updater.load_index().await;
 
     if let Ok(index) = index
         && let Some(plugin) =

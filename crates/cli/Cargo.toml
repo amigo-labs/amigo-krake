@@ -32,3 +32,4 @@ console = { workspace = true }
 regex = "1"
 serde = { workspace = true }
 toml = { workspace = true }
+tempfile = { workspace = true }

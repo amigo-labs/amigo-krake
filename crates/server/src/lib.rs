@@ -34,6 +34,22 @@ use krake_plugin_runtime::updater::PluginUpdater;
 /// Build the full application state suitable for testing.
 /// Uses in-memory storage and a no-discover plugin loader.
 pub fn build_test_state(config: Config) -> api::AppState {
+    // The configured registry, like `main.rs`, without an on-disk cache so
+    // tests never share or leave behind an index.
+    let mut registry_config = krake_plugin_runtime::registry::RegistryConfig::for_index(
+        config.update.plugin_registry_url.clone(),
+        false,
+    );
+    registry_config.cache_path = None;
+    build_test_state_with_registry(config, registry_config)
+}
+
+/// [`build_test_state`] with an explicit registry configuration (for tests
+/// that pin a signing key).
+pub fn build_test_state_with_registry(
+    config: Config,
+    registry_config: krake_plugin_runtime::registry::RegistryConfig,
+) -> api::AppState {
     let storage = Storage::open_memory().expect("Failed to open in-memory storage");
     let coordinator = Coordinator::new(config.clone(), storage);
     let coordinator = Arc::new(coordinator);
@@ -53,7 +69,6 @@ pub fn build_test_state(config: Config) -> api::AppState {
             .expect("Failed to init plugin loader"),
     );
 
-    let registry_config = krake_plugin_runtime::registry::RegistryConfig::default();
     let plugin_updater = Arc::new(PluginUpdater::new(
         registry_config,
         http_client.clone(),

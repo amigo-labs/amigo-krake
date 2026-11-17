@@ -10,6 +10,7 @@ pub mod permissions;
 pub mod plugin_host;
 mod process_host;
 pub mod registry;
+pub mod registry_build;
 pub mod sandbox;
 pub mod transpiler;
 pub mod types;

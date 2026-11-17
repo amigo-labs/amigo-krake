@@ -224,6 +224,15 @@ pub struct FeatureFlags {
     pub server_stats: bool,
 }
 
+/// Index URL of the published plugin registry (docs/specs/plugin-registry.md).
+pub const DEFAULT_PLUGIN_REGISTRY_URL: &str = "https://krake-registry.amigo-labs.dev/index.json";
+
+/// The default before the registry was published. It never served an index;
+/// configs that still carry it are moved to [`DEFAULT_PLUGIN_REGISTRY_URL`]
+/// on load.
+pub const LEGACY_PLUGIN_REGISTRY_URL: &str =
+    "https://raw.githubusercontent.com/amigo-labs/amigo-downloader-plugins/main/index.json";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateConfig {
     /// Automatically check for updates periodically.
@@ -336,7 +345,7 @@ impl Default for UpdateConfig {
         Self {
             auto_check: true,
             check_interval_hours: 24,
-            plugin_registry_url: "https://raw.githubusercontent.com/amigo-labs/amigo-downloader-plugins/main/index.json".into(),
+            plugin_registry_url: DEFAULT_PLUGIN_REGISTRY_URL.into(),
             github_repo: "amigo-labs/amigo-krake".into(),
             auto_update_plugins: false,
         }
@@ -369,8 +378,9 @@ impl Config {
         }
 
         let content = std::fs::read_to_string(path)?;
-        let config: Self = toml::from_str(&content)
+        let mut config: Self = toml::from_str(&content)
             .map_err(|e| crate::Error::Other(format!("Failed to parse config: {e}")))?;
+        config.migrate();
         // Reject invalid values up front (e.g. a hand-edited negative
         // retry.base_delay_secs) instead of panicking later when they feed
         // Duration::from_secs_f64 in RetryPolicy::from.
@@ -383,6 +393,18 @@ impl Config {
         }
         info!("Loaded config from {}", path.display());
         Ok(config)
+    }
+
+    /// Replace values that earlier versions wrote and that no longer work.
+    /// In memory only; the next save writes the new values.
+    pub fn migrate(&mut self) {
+        if self.update.plugin_registry_url == LEGACY_PLUGIN_REGISTRY_URL {
+            info!(
+                "Moving plugin registry URL to {}",
+                DEFAULT_PLUGIN_REGISTRY_URL
+            );
+            self.update.plugin_registry_url = DEFAULT_PLUGIN_REGISTRY_URL.into();
+        }
     }
 
     /// Resolve the config file path (first writable standard path).
@@ -653,5 +675,55 @@ mod tests {
         let result = Config::load(&path);
         assert!(result.is_err(), "invalid config must not load");
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn ac14_default_registry_url_is_the_published_registry() {
+        assert_eq!(
+            Config::default().update.plugin_registry_url,
+            "https://krake-registry.amigo-labs.dev/index.json"
+        );
+        assert_eq!(
+            DEFAULT_PLUGIN_REGISTRY_URL,
+            Config::default().update.plugin_registry_url
+        );
+    }
+
+    fn config_with_registry(url: &str) -> (tempfile::TempDir, std::path::PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        let mut config = Config::default();
+        config.update.plugin_registry_url = url.to_string();
+        config.save(&path).unwrap();
+        (dir, path)
+    }
+
+    #[test]
+    fn ac15_legacy_registry_url_is_replaced_on_load_and_written_on_save() {
+        let (_dir, path) = config_with_registry(LEGACY_PLUGIN_REGISTRY_URL);
+        let before = std::fs::read_to_string(&path).unwrap();
+
+        let loaded = Config::load(&path).unwrap();
+        assert_eq!(
+            loaded.update.plugin_registry_url,
+            DEFAULT_PLUGIN_REGISTRY_URL
+        );
+        // Loading alone does not touch the file.
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), before);
+
+        loaded.save(&path).unwrap();
+        let after = std::fs::read_to_string(&path).unwrap();
+        assert!(after.contains(DEFAULT_PLUGIN_REGISTRY_URL), "{after}");
+        assert!(!after.contains(LEGACY_PLUGIN_REGISTRY_URL), "{after}");
+    }
+
+    #[test]
+    fn ac15_custom_registry_url_is_kept() {
+        let custom = "https://plugins.example.org/fork/index.json";
+        let (_dir, path) = config_with_registry(custom);
+        assert_eq!(
+            Config::load(&path).unwrap().update.plugin_registry_url,
+            custom
+        );
     }
 }

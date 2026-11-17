@@ -23,11 +23,13 @@ on:
 env:
   CARGO_TERM_COLOR: always
   # Ed25519 *public* keys pinned into the binaries for plugin-registry and
-  # self-update signature verification. `build.rs` refuses a release build
+  # self-update signature verification. Both are the update key: the plugin
+  # registry index is signed with AMIGO_UPDATE_SIGNING_KEY too
+  # (Entscheidung 17, docs/specs/plugin-registry.md). `build.rs` refuses a release build
   # without them (or with the all-zero placeholder). They are public, so they
   # are repository variables, not secrets: Settings → Secrets and variables →
   # Actions → Variables.
-  KRAKE_REGISTRY_PUBKEY_HEX: ${{ vars.AMIGO_REGISTRY_PUBKEY_HEX }}
+  KRAKE_REGISTRY_PUBKEY_HEX: ${{ vars.AMIGO_UPDATE_PUBKEY_HEX }}
   KRAKE_UPDATE_PUBKEY_HEX: ${{ vars.AMIGO_UPDATE_PUBKEY_HEX }}
 
 permissions:
@@ -215,7 +217,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
-            KRAKE_REGISTRY_PUBKEY_HEX=${{ vars.AMIGO_REGISTRY_PUBKEY_HEX }}
+            KRAKE_REGISTRY_PUBKEY_HEX=${{ vars.AMIGO_UPDATE_PUBKEY_HEX }}
             KRAKE_UPDATE_PUBKEY_HEX=${{ vars.AMIGO_UPDATE_PUBKEY_HEX }}
 
   # ─── Desktop Installers (Tauri) ────────────────────────────────────

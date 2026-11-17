@@ -465,6 +465,30 @@ instance that evaluates it, which fails that load; it is still kept out:
 - the daemon reads and writes the cache; the plugin host only ever receives
   bytecode from it, so a bad entry can at worst fail that plugin's load.
 
+## Publishing to the registry
+
+Plugins in this repository under `plugins/hosters/`, `plugins/multi-hosters/`
+and `plugins/extractors/` are published on every push to `main` to the plugin
+registry at `https://krake-registry.amigo-labs.dev` — the index servers use for
+the marketplace, `krake plugins search` / `install` / `update` and automatic
+plugin updates.
+
+- The index entry is read from the plugin itself after loading it with the
+  real runtime: `id`, `name`, `version`, `description`, `author`,
+  `urlPattern`, `apiVersion`, `permissions.domains`, and `pluginType` as tag.
+  A plugin that does not load, or has an invalid id, a non-SemVer `version`,
+  an unsupported `apiVersion`, an invalid `urlPattern`, non-UTF-8 source or
+  more than 2 MiB of source, stops the publish.
+- Each version is published once under `plugins/<id>/<version>/plugin.ts`
+  (or `.js`) and never overwritten. **Raise `version` with every change**: the
+  pull-request check fails when a plugin's source differs from its published
+  version and the version is not higher.
+- The index is signed with Ed25519 (`index.json.sig`); servers verify it with
+  the key pinned into the release build and each artifact by its SHA-256.
+
+Commands and local dry runs: `plugins/README.md`, "Publishing to the
+registry". Spec: `docs/specs/plugin-registry.md`.
+
 ## Reloading Plugins
 
 Plugins are loaded from the plugin directories at server startup. Loading a

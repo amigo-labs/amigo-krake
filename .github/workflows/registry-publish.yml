@@ -1,0 +1,65 @@
+name: Plugin registry
+
+# Builds the plugin registry from plugins/ with the real plugin runtime, signs
+# index.json with the update signing key and pushes the result to the branch
+# `registry`, which Cloudflare Pages serves at
+# https://krake-registry.amigo-labs.dev (docs/specs/plugin-registry.md).
+#
+# Each run publishes the full state of its commit, never a delta, so a run
+# that is skipped or superseded loses nothing: the next one carries it.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "plugins/**"
+      - "crates/plugin-runtime/**"
+      - "crates/cli/**"
+      - "Cargo.lock"
+      - ".github/workflows/registry-publish.yml"
+  workflow_dispatch:
+
+# Runs never overlap; a newer push waits for the running one.
+concurrency:
+  group: registry-publish
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  publish:
+    name: Publish registry
+    runs-on: ubuntu-latest
+    steps:
+      # Full history: the publish step fetches the `registry` branch and
+      # pushes a commit on top of it from a worktree of this checkout.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@1.99.0
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install protobuf compiler, clang and lld
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler clang lld
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build krake and the plugin host
+        run: |
+          mkdir -p web-ui/dist
+          cargo build --locked -p krake-cli -p krake-plugin-runtime --bins
+
+      - name: Build, sign and push
+        env:
+          KRAKE_UPDATE_SIGNING_KEY: ${{ secrets.AMIGO_UPDATE_SIGNING_KEY }}
+          KRAKE_UPDATE_PUBKEY_HEX: ${{ vars.AMIGO_UPDATE_PUBKEY_HEX }}
+        run: |
+          ./target/debug/krake plugins registry publish \
+            --message "registry: publish plugins of ${GITHUB_SHA::12}"

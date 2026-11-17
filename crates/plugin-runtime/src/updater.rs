@@ -27,6 +27,16 @@ impl PluginUpdater {
         }
     }
 
+    /// The registry this updater reads.
+    pub fn config(&self) -> &RegistryConfig {
+        &self.config
+    }
+
+    /// The registry index (cached or fetched, signature-checked as configured).
+    pub async fn load_index(&self) -> Result<crate::registry::RegistryIndex, crate::Error> {
+        crate::registry::load_index(&self.client, &self.config).await
+    }
+
     /// Check for available plugin updates.
     pub async fn check_updates(&self) -> Result<Vec<PluginUpdateInfo>, crate::Error> {
         let index = registry::fetch_index(&self.client, &self.config).await?;

@@ -16,6 +16,11 @@
     "wrangler": "^4.146.0"
   },
   "pnpm": {
+    "auditConfig": {
+      "ignoreGhsas": [
+        "GHSA-fc5q-39xc-vjpf"
+      ]
+    },
     "overrides": {
       "yaml@<2.8.3": "^2.8.3",
       "file-type@<21.3.2": "^21.3.2",
