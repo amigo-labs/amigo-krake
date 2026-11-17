@@ -24,8 +24,9 @@ builds an index from the plugins in `plugins/`, nothing signs it, nothing
 publishes it.
 
 Decided (Entscheidung 17): the registry is served at
-`https://krake-registry.amigo-labs.dev` by Cloudflare Pages, which deploys the
-branch `registry` of this repository as static files with no build step. A
+`https://krake-registry.amigo-labs.dev` by the Cloudflare Worker `amigo-krake`
+(Workers Builds, static assets only), which deploys the branch `registry` of
+this repository as static files with no build step. A
 GitHub Actions job on `main` builds, signs and commits the registry content to
 that branch, so the signing key never leaves GitHub Actions. The index is
 signed with the same Ed25519 key as the core self-update archives
@@ -63,7 +64,7 @@ Plugins stay in this monorepo (Entscheidung 1).
 - Serving more than the latest version of a plugin in the index (rollback,
   version pinning) — because no client can choose a version today; older
   artifacts stay downloadable only so a cached index keeps working.
-- Setting up DNS, the Cloudflare Pages project and the GitHub secret — because
+- Setting up DNS, the Cloudflare Workers project and the GitHub secret — because
   that is done by an organization owner, not in code (see Technical notes).
 - Changing the index format (`schema_version` 1) — because every released
   client parses it; the builder fills the existing fields.
@@ -209,9 +210,11 @@ files.
   `.assetsignore` into the branch root, so Workers Builds deploys the branch
   as is. `main` keeps its own `wrangler.jsonc` for the unrelated
   `amigo-downloader` redirect Worker.
-- **Org setup (manual, once):** Cloudflare Pages project connected to this
-  repository with production branch `registry`, empty build command, output
-  directory `/`, custom domain `krake-registry.amigo-labs.dev`. The workflow
+- **Org setup (manual, once):** Cloudflare Workers project `amigo-krake`
+  connected to this repository with production branch `registry`, builds of
+  other branches off, empty build command, deploy command
+  `npx wrangler deploy`, root `/`, custom domain
+  `krake-registry.amigo-labs.dev`. The workflow
   needs `contents: write` to push `registry`.
 - **CLI.** `search` uses `GET /api/v1/updates/plugins/available`. `update`
   reads the pending updates (old/new version, `requires_approval`, added
@@ -250,9 +253,9 @@ files.
 | `min_app_version` stays `null` | `api_version` is the compatibility gate the client already enforces; a plugin needing a new host function requires a raised `api_version` | A plugin that relies on a minor-release host function without raising `api_version` would fail at runtime on older servers |
 | One key for core updates and the registry | Maintainer's choice: one secret to guard and rotate; the signed payloads differ in kind (archive vs. JSON index), so a signature for one cannot pass as the other | A leaked key compromises both channels at once, and rotating it rotates both |
 | Existing release binaries keep their old registry key | They never had a working registry (the old URL is 404), so nothing they use breaks; they get the registry once they self-update | none |
-| Byte-for-byte delivery through Cloudflare | Pages serves static files unchanged; transport compression is undone by the HTTP client before the SHA-256 check | A host-side transform would surface as a checksum error, never as a silent change |
+| Byte-for-byte delivery through Cloudflare | Workers static assets are served unchanged; transport compression is undone by the HTTP client before the SHA-256 check | A host-side transform would surface as a checksum error, never as a silent change |
 | The PR check can read branch `registry` from fork PRs | The repository is public and the check only reads git data, no secret or variable | A private repository would need a token |
-| Cloudflare Pages deploys every push to `registry` within minutes | Git-connected Pages project, as the user set it up | Delay only; no correctness impact |
+| Cloudflare deploys every push to `registry` within minutes | Git-connected Workers project (Workers Builds), as the user set it up | Delay only; no correctness impact |
 
 ## Open questions
 
