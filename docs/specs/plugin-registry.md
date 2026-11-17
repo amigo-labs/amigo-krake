@@ -255,17 +255,17 @@ files.
 
 | AC    | Test | Status | Commit |
 | ----- | ---- | ------ | ------ |
-| AC-01 |      | open   |        |
-| AC-02 |      | open   |        |
-| AC-03 |      | open   |        |
-| AC-04 |      | open   |        |
-| AC-05 |      | open   |        |
-| AC-06 |      | open   |        |
-| AC-07 |      | open   |        |
-| AC-08 |      | open   |        |
-| AC-09 |      | open   |        |
-| AC-10 |      | open   |        |
-| AC-11 |      | open   |        |
+| AC-01 | `ac01_one_entry_per_plugin_in_the_three_categories` (crates/plugin-runtime/tests/registry_build_tests.rs) | built |  |
+| AC-02 | `ac02_entry_fields_equal_the_declared_values` (crates/plugin-runtime/tests/registry_build_tests.rs) | built |  |
+| AC-03 | `ac03_download_url_path_and_sha256_match_the_written_artifact` (crates/plugin-runtime/tests/registry_build_tests.rs) | built |  |
+| AC-04 | `ac04_*` (9 tests) (crates/plugin-runtime/tests/registry_build_tests.rs) | built |  |
+| AC-05 | `ac05_*` (5 tests) (crates/plugin-runtime/tests/registry_build_tests.rs) | built |  |
+| AC-06 | `ac06_empty_plugin_tree_fails` (crates/plugin-runtime/tests/registry_build_tests.rs) | built |  |
+| AC-07 | `ac07_build_and_signature_are_deterministic` (crates/plugin-runtime/tests/registry_build_tests.rs) | built |  |
+| AC-08 | `ac08_signed_index_is_accepted_by_the_registry_client` (crates/plugin-runtime/tests/registry_build_tests.rs) | built |  |
+| AC-09 | `ac09_signing_refuses_bad_or_missing_key_material` (crates/plugin-runtime/tests/registry_build_tests.rs) | built |  |
+| AC-10 | `registry_cmd::tests::ac10_publish_creates_extends_and_skips_unchanged` (crates/cli/src/registry_cmd.rs) | built |  |
+| AC-11 | `registry_cmd::tests::ac11_moved_branch_fails_without_overwriting_then_rerun_succeeds`, `ac11_unverifiable_signature_is_never_committed` (crates/cli/src/registry_cmd.rs) | built |  |
 | AC-12 |      | open   |        |
 | AC-13 |      | open   |        |
 | AC-14 |      | open   |        |
@@ -287,3 +287,18 @@ files.
 - 2026-11-17: Metadata comes from loading each plugin with the real runtime —
   the index shows what clients will load, and a broken plugin is never
   published.
+- 2026-11-17 (build): Blocks AC-01 to AC-11 were drafted before their tests,
+  so the first test run was green. The red run was produced by mutation
+  instead: disabling the "already published" check, the urlPattern check and
+  the id ordering made `ac01`, `ac04_invalid_url_pattern…` and both `ac05`
+  source tests fail; forcing the push, skipping signature verification and
+  committing unchanged trees made all three `registry_cmd` tests fail.
+- 2026-11-17 (build): The maintainer commands are hidden subcommands
+  `krake plugins registry build|sign|check|publish` of the CLI, which already
+  depends on the plugin runtime; `check` is the pull-request check (AC-13) and
+  shares the branch checkout with `publish`.
+- 2026-11-17 (build): The CLI now depends on `tempfile`, an existing workspace
+  dependency already in `Cargo.lock` — no new crate enters the build.
+- 2026-11-17 (build): Publishing works in a temporary `git worktree` of the
+  checkout, so it reuses the checkout's credentials, and pushes without
+  force; a run that lost a race fails (AC-11).

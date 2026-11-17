@@ -1,3 +1,5 @@
+mod registry_cmd;
+
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -179,6 +181,13 @@ enum PluginAction {
     },
     /// Search the plugin registry
     Search { query: String },
+    /// Maintainer commands that build, sign, check and publish the plugin
+    /// registry from this repository.
+    #[command(hide = true)]
+    Registry {
+        #[command(subcommand)]
+        action: registry_cmd::RegistryAction,
+    },
     /// Test a plugin: run spec file, or resolve a URL
     Test {
         /// Path to plugin file (.js or .ts)
@@ -1266,6 +1275,7 @@ async fn main() -> anyhow::Result<()> {
             PluginAction::Install { id, yes, remote } => {
                 plugins_install(&id, yes, remote.as_deref()).await?;
             }
+            PluginAction::Registry { action } => registry_cmd::run(action).await?,
             PluginAction::Update { .. } | PluginAction::Search { .. } => {
                 println!("Plugin updates require the server. Use the web UI or API.");
             }
