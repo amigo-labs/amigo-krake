@@ -271,7 +271,7 @@ files.
 | AC-14 | `config::tests::ac14_default_registry_url_is_the_published_registry` (crates/core/src/config.rs), `registry::tests::ac14_default_index_url_is_the_published_registry` (crates/plugin-runtime/src/registry.rs), `ac14_server_and_runtime_default_to_the_same_registry` (crates/server/tests/api_tests.rs) | built |  |
 | AC-15 | `config::tests::ac15_legacy_registry_url_is_replaced_on_load_and_written_on_save`, `ac15_custom_registry_url_is_kept` (crates/core/src/config.rs) | built |  |
 | AC-16 | `.github/workflows/release-build.yml` (`KRAKE_REGISTRY_PUBKEY_HEX` from `vars.AMIGO_UPDATE_PUBKEY_HEX`, step "Require pinned signing keys") | built |  |
-| AC-17 | `ac17_suggest_uses_the_configured_registry`, `ac17_unreachable_registry_means_no_suggestion` (crates/server/tests/api_tests.rs) | built |  |
+| AC-17 | `ac17_suggest_uses_the_configured_registry`, `ac17_unreachable_registry_means_no_suggestion`, `ac17_suggest_verifies_the_registry_signature` (crates/server/tests/api_tests.rs) | built |  |
 | AC-18 | `plugins_remote::tests::ac18_search_matches_id_name_description_and_tags` (crates/cli/src/plugins_remote.rs) | built |  |
 | AC-19 | `ac19_update_all_reports_each_plugin_and_skips_new_ones`, `ac19_failed_update_is_reported_and_fails_the_command` (crates/cli/src/plugins_remote.rs) | built |  |
 | AC-20 | `ac20_widened_access_needs_approval`, `ac20_without_yes_and_without_a_terminal_the_update_is_skipped`, `ac20_yes_flag_approves_without_asking` (crates/cli/src/plugins_remote.rs) | built |  |
@@ -328,3 +328,10 @@ files.
   other pushes cannot change what is published.
 - 2026-11-17 (build): `docs/release-todo.md` now asks for one key pair; the
   variable `AMIGO_REGISTRY_PUBKEY_HEX` is no longer read.
+- 2026-11-17 (build, verification round 1): AC-17's verification clause got
+  `ac17_suggest_verifies_the_registry_signature` (pinned key; a signature from
+  another key or none means no suggestion); red run by mutation — skipping
+  verification in `PluginUpdater::load_index` made it fail. The server test
+  state takes an explicit registry config via `build_test_state_with_registry`.
+- 2026-11-17 (build, verification round 1): `docs/plugin-api.md` gained
+  "Publishing to the registry"; the publish workflow checks out full history.

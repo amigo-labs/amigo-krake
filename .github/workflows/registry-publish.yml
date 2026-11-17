@@ -36,7 +36,11 @@ jobs:
     name: Publish registry
     runs-on: ubuntu-latest
     steps:
+      # Full history: the publish step fetches the `registry` branch and
+      # pushes a commit on top of it from a worktree of this checkout.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: dtolnay/rust-toolchain@1.99.0
         with:
