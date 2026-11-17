@@ -602,8 +602,9 @@ krake plugins enable <id>
 krake plugins login <id>
 krake plugins install <id>
 krake plugins search <query>
-krake plugins update [id]
+krake plugins update [id] [--yes]        # on the paired server
 krake plugins test <plugin.ts> [url]     # run spec or resolve a URL
+krake plugins registry build|sign|check|publish   # maintainers, hidden from --help
 
 # Self-update
 krake update check

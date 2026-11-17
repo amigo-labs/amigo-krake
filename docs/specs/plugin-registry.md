@@ -266,11 +266,11 @@ files.
 | AC-09 | `ac09_signing_refuses_bad_or_missing_key_material` (crates/plugin-runtime/tests/registry_build_tests.rs) | built |  |
 | AC-10 | `registry_cmd::tests::ac10_publish_creates_extends_and_skips_unchanged` (crates/cli/src/registry_cmd.rs) | built |  |
 | AC-11 | `registry_cmd::tests::ac11_moved_branch_fails_without_overwriting_then_rerun_succeeds`, `ac11_unverifiable_signature_is_never_committed` (crates/cli/src/registry_cmd.rs) | built |  |
-| AC-12 |      | open   |        |
-| AC-13 |      | open   |        |
+| AC-12 | `.github/workflows/registry-publish.yml` job `publish` (green run after merge + live `index.json`) | built |  |
+| AC-13 | `.github/workflows/ci.yml` job `registry-check` (`krake plugins registry check`); logic covered by `ac05_*` in crates/plugin-runtime/tests/registry_build_tests.rs and `ac10_*` in crates/cli/src/registry_cmd.rs | built |  |
 | AC-14 | `config::tests::ac14_default_registry_url_is_the_published_registry` (crates/core/src/config.rs), `registry::tests::ac14_default_index_url_is_the_published_registry` (crates/plugin-runtime/src/registry.rs), `ac14_server_and_runtime_default_to_the_same_registry` (crates/server/tests/api_tests.rs) | built |  |
 | AC-15 | `config::tests::ac15_legacy_registry_url_is_replaced_on_load_and_written_on_save`, `ac15_custom_registry_url_is_kept` (crates/core/src/config.rs) | built |  |
-| AC-16 |      | open   |        |
+| AC-16 | `.github/workflows/release-build.yml` (`KRAKE_REGISTRY_PUBKEY_HEX` from `vars.AMIGO_UPDATE_PUBKEY_HEX`, step "Require pinned signing keys") | built |  |
 | AC-17 | `ac17_suggest_uses_the_configured_registry`, `ac17_unreachable_registry_means_no_suggestion` (crates/server/tests/api_tests.rs) | built |  |
 | AC-18 | `plugins_remote::tests::ac18_search_matches_id_name_description_and_tags` (crates/cli/src/plugins_remote.rs) | built |  |
 | AC-19 | `ac19_update_all_reports_each_plugin_and_skips_new_ones`, `ac19_failed_update_is_reported_and_fails_the_command` (crates/cli/src/plugins_remote.rs) | built |  |
@@ -319,3 +319,12 @@ files.
 - 2026-11-17 (build): `update` reads `/updates/plugins/available` first so an
   unavailable registry is reported as such — `/updates/check` swallows
   registry errors into an empty list.
+- 2026-11-17 (build): AC-12, AC-13 and AC-16 are CI-only; they cannot go red
+  locally. Manual run against a local bare origin: `publish` created the
+  branch, and after editing `alldebrid` without a version bump `check` exited
+  1 naming the plugin. Their first CI runs are the proof.
+- 2026-11-17 (build): The publish workflow runs on pushes to `main` that touch
+  `plugins/`, the plugin runtime, the CLI or `Cargo.lock` (and on demand);
+  other pushes cannot change what is published.
+- 2026-11-17 (build): `docs/release-todo.md` now asks for one key pair; the
+  variable `AMIGO_REGISTRY_PUBKEY_HEX` is no longer read.
