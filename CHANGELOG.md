@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.4](https://github.com/amigo-labs/amigo-krake/compare/v0.1.3...v0.1.4) (2026-11-17)
+
+
+### Bug Fixes
+
+* **cli:** publish a Workers static-assets config with the registry branch ([18fc7bd](https://github.com/amigo-labs/amigo-krake/commit/18fc7bd5ea7cb5c2602f7c947d8c9345447abc54))
+* **cli:** publish a Workers static-assets config with the registry branch ([7106b3f](https://github.com/amigo-labs/amigo-krake/commit/7106b3fb159633fea5abcd010ff62cb3f6181f47))
+
 ## [0.1.3](https://github.com/amigo-labs/amigo-krake/compare/v0.1.2...v0.1.3) (2026-11-17)
 
 
