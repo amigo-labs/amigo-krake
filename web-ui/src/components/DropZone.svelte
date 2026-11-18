@@ -1,8 +1,29 @@
 <script lang="ts">
-  import { addDownload, addBatch, importDlc, uploadNzb } from "../lib/api";
+  import { importDlc, uploadNzb } from "../lib/api";
   import { addToast } from "../lib/toast";
   import { locale, tr } from "../lib/i18n";
-  import { isFileDrag } from "../lib/dnd";
+  import { isFileDrag, isInternalDrag } from "../lib/dnd";
+  import { importLinkList, importLinkListFile } from "../lib/linkListActions";
+
+  // Text dropped or pasted into a field belongs to that field: the browser
+  // inserts it and the add panel queues it on submit (AC-07).
+  function inTextField(target: EventTarget | null): boolean {
+    return (
+      target instanceof Element &&
+      target.closest("input, textarea, select, [contenteditable]:not([contenteditable='false'])") !== null
+    );
+  }
+
+  function isTextDrag(e: DragEvent): boolean {
+    const types = e.dataTransfer?.types;
+    return (
+      !!types &&
+      Array.prototype.includes.call(types, "text/plain") &&
+      !isFileDrag(e) &&
+      !isInternalDrag(e) &&
+      !inTextField(e.target)
+    );
+  }
 
   let dragging = $state(false);
   let dragCounter = $state(0);
@@ -28,11 +49,17 @@
   }
 
   function handleDragOver(e: DragEvent) {
-    if (!isFileDrag(e)) return;
+    if (!isFileDrag(e) && !isTextDrag(e)) return;
     e.preventDefault();
   }
 
   async function handleDrop(e: DragEvent) {
+    if (isTextDrag(e)) {
+      e.preventDefault();
+      const text = e.dataTransfer?.getData("text/plain");
+      if (text) await importLinkList(text);
+      return;
+    }
     if (!isFileDrag(e)) return;
     e.preventDefault();
     dragging = false;
@@ -51,35 +78,22 @@
             await uploadNzb(text);
             addToast("success", tr($locale, "drop.nzb_imported"), file.name);
           } else {
-            const text = await file.text();
-            const urls = text.split("\n").map((u) => u.trim()).filter((u) => u.startsWith("http"));
-            if (urls.length > 0) {
-              await addBatch(urls);
-              addToast("success", tr($locale, "drop.urls_added", { count: urls.length }), file.name);
-            }
+            await importLinkListFile(file);
           }
         } catch {
           addToast("error", tr($locale, "drop.import_failed"), file.name);
         }
       }
-      return;
     }
+  }
 
-    const text = e.dataTransfer?.getData("text/plain");
-    if (text) {
-      const urls = text.split("\n").map((u) => u.trim()).filter((u) => u.startsWith("http"));
-      try {
-        if (urls.length === 1) {
-          await addDownload(urls[0]);
-          addToast("success", tr($locale, "add.added"), urls[0]);
-        } else if (urls.length > 1) {
-          await addBatch(urls);
-          addToast("success", tr($locale, "add.added_many", { count: urls.length }));
-        }
-      } catch {
-        addToast("error", tr($locale, "add.failed"));
-      }
-    }
+  // Pasting text while no field has focus queues its links (AC-07).
+  async function handlePaste(e: ClipboardEvent) {
+    if (inTextField(e.target) || inTextField(document.activeElement)) return;
+    const text = e.clipboardData?.getData("text/plain");
+    if (!text) return;
+    e.preventDefault();
+    await importLinkList(text);
   }
 </script>
 
@@ -88,6 +102,7 @@
   ondragleave={handleDragLeave}
   ondragover={handleDragOver}
   ondrop={handleDrop}
+  onpaste={handlePaste}
 />
 
 {#if dragging}

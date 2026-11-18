@@ -228,14 +228,14 @@ Terms used below:
 | AC-02 | `crates/core/tests/link_list_fixtures.rs::link_list_fixtures`, `web-ui/test/linkList.test.ts` | built |        |
 | AC-03 | `crates/core/tests/link_list_fixtures.rs::link_list_fixtures`, `web-ui/test/linkList.test.ts` | built |        |
 | AC-04 | `crates/core/tests/link_list_fixtures.rs::link_list_fixtures`, `web-ui/test/linkList.test.ts` | built |        |
-| AC-05 |      | open   |        |
-| AC-06 |      | open   |        |
-| AC-07 |      | open   |        |
-| AC-08 |      | open   |        |
-| AC-09 |      | open   |        |
-| AC-10 |      | open   |        |
-| AC-11 |      | open   |        |
-| AC-12 |      | open   |        |
+| AC-05 | `web-ui/test/linkListImport.test.ts` (queueLinkList: active downloads not sent; resultToast: zero counts left out) + browser wiring check (Decisions) | built |        |
+| AC-06 | `web-ui/test/linkListImport.test.ts` (prepareLinkList) + browser wiring check (Decisions) | built |        |
+| AC-07 | `web-ui/test/linkList.test.ts` + `web-ui/test/linkListImport.test.ts` + browser wiring check (Decisions) | built |        |
+| AC-08 | `web-ui/test/linkListImport.test.ts` (keeps the other links when some are rejected; first five, then and N more) | built |        |
+| AC-09 | `web-ui/test/linkListImport.test.ts` (reports a list without links) + browser wiring check | built |        |
+| AC-10 | `web-ui/test/linkListImport.test.ts` (refuses more than 1 MiB, UTF-8 bytes, file size) + browser wiring check | built |        |
+| AC-11 | `web-ui/test/linkListImport.test.ts` (several requests, body limit, stops at a failed request) | built |        |
+| AC-12 | `web-ui/test/linkListImport.test.ts` (link list strings) + `web-ui/test/i18nKeys.test.ts` | built |        |
 | AC-13 |      | dropped |        |
 | AC-14 |      | dropped |        |
 | AC-15 |      | dropped |        |
@@ -264,3 +264,16 @@ Terms used below:
 - 2026-11-18 (spec-build): AC-22's test was green as soon as the clap
   `conflicts_with_all` rule existed; the rule and the test arrived in the same
   step, so there was no separate red run for it.
+- 2026-11-18 (spec-build): The repository has no browser test suite and
+  Playwright is not a dependency (adding one is a stopping point), so the
+  logic of AC-05 to AC-11 is unit-tested in `web-ui/test/linkListImport.test.ts`
+  and the component wiring (drop of a file and of text, paste with no field
+  focused, file choice in the add panel incl. no-links and too-large, submit)
+  was checked once with a throwaway Playwright script against a local
+  `krake-server`: every case behaved as specified.
+- 2026-11-18 (spec-build): Text dropped or pasted into an input, textarea or
+  editable element is left to that element (the add panel's field queues it
+  on submit); only drops and pastes elsewhere import directly.
+- 2026-11-18 (spec-build): The add panel's submit now uses the link list rule
+  too, so `magnet:` and `ftp:` lines, accepted before, count as not
+  recognized; Krake downloads neither (out of scope of this spec).
