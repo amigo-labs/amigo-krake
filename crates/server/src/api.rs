@@ -28,6 +28,28 @@ pub struct AppState {
     pub captcha_manager: Arc<CaptchaManager>,
     pub webhook_dispatcher: Arc<WebhookDispatcher>,
     pub config_path: std::path::PathBuf,
+    /// The login mode set by `KRAKE_AUTH_MODE`; it overrides the config and
+    /// cannot be changed through the API (spec `local-auth-bypass`, AC-09).
+    pub auth_mode_env: Option<krake_core::config::AuthMode>,
+    /// Whether the listener was bound to a loopback address at startup.
+    pub bind_is_loopback: bool,
+    /// Serializes config changes so each is checked against the config it
+    /// replaces (AC-11).
+    pub config_lock: Arc<tokio::sync::Mutex<()>>,
+    /// Bumped after every config change; open WebSockets let in without a
+    /// login check themselves again (AC-08).
+    pub config_epoch: Arc<tokio::sync::watch::Sender<u64>>,
+}
+
+impl AppState {
+    /// The login mode in effect for `config`: the environment's, else the
+    /// config's (an unreadable value counts as `always`).
+    pub fn auth_mode(&self, config: &krake_core::config::Config) -> krake_core::config::AuthMode {
+        self.auth_mode_env.unwrap_or_else(|| {
+            krake_core::config::AuthMode::parse(&config.server.auth_mode)
+                .unwrap_or(krake_core::config::AuthMode::Always)
+        })
+    }
 }
 
 pub fn router(state: AppState) -> Router {
@@ -1045,17 +1067,78 @@ fn apply_secret_passthrough(
 
 async fn get_config(State(state): State<AppState>) -> Json<krake_core::config::Config> {
     let config = state.coordinator.config().await;
-    Json(redact_config(config))
+    Json(with_effective_auth_mode(&state, redact_config(config)))
+}
+
+/// Report the login mode in effect: the environment's, flagged as such
+/// (spec `local-auth-bypass`, AC-09).
+fn with_effective_auth_mode(
+    state: &AppState,
+    mut config: krake_core::config::Config,
+) -> krake_core::config::Config {
+    if let Some(mode) = state.auth_mode_env {
+        config.server.auth_mode = mode.as_str().into();
+        config.server.auth_mode_from_env = true;
+    }
+    config
+}
+
+/// Check and normalize the login mode of a config about to be stored
+/// (spec `local-auth-bypass`, AC-04, AC-09, AC-10).
+fn check_auth_mode(
+    state: &AppState,
+    incoming: &mut krake_core::config::Config,
+    existing: &krake_core::config::Config,
+) -> Result<(), String> {
+    use krake_core::config::AuthMode;
+    let sent = AuthMode::parse(&incoming.server.auth_mode).ok_or_else(|| {
+        format!(
+            "server.auth_mode: unknown value \"{}\" (allowed: {})",
+            incoming.server.auth_mode,
+            AuthMode::ALLOWED
+        )
+    })?;
+    incoming.server.auth_mode_from_env = false;
+    let mode = match state.auth_mode_env {
+        Some(env) if env != sent => {
+            return Err(format!(
+                "server.auth_mode is set to \"{}\" by KRAKE_AUTH_MODE and cannot be changed here",
+                env.as_str()
+            ));
+        }
+        Some(env) => {
+            // The document as read carries the environment's mode; keep the
+            // file's own value.
+            incoming.server.auth_mode = existing.server.auth_mode.clone();
+            env
+        }
+        None => {
+            incoming.server.auth_mode = sent.as_str().into();
+            sent
+        }
+    };
+    if mode == AuthMode::Never && !(state.bind_is_loopback && incoming.server.is_bind_loopback()) {
+        return Err(format!(
+            "server.auth_mode \"never\" needs a loopback bind (127.0.0.1, ::1 or localhost); \
+             server.bind is \"{}\"",
+            incoming.server.bind
+        ));
+    }
+    Ok(())
 }
 
 async fn put_config(
     State(state): State<AppState>,
     Json(mut new_config): Json<krake_core::config::Config>,
 ) -> Result<Json<krake_core::config::Config>, (StatusCode, Json<ErrorResponse>)> {
+    // One change at a time, each checked against the config it replaces.
+    let _change = state.config_lock.lock().await;
     // Restore secrets the UI never saw so a "save settings" round-trip from
     // a masked GET response cannot accidentally erase credentials.
     let existing = state.coordinator.config().await;
     apply_secret_passthrough(&mut new_config, &existing);
+    check_auth_mode(&state, &mut new_config, &existing)
+        .map_err(|error| (StatusCode::BAD_REQUEST, Json(ErrorResponse { error })))?;
 
     // Save to TOML file
     new_config.save(&state.config_path).map_err(|e| {
@@ -1077,8 +1160,14 @@ async fn put_config(
         .set_endpoints(new_config.webhooks.clone())
         .await;
 
+    // Sockets let in without a login check themselves against the new config.
+    state.config_epoch.send_modify(|epoch| *epoch += 1);
+
     tracing::info!("Config updated and saved to {:?}", state.config_path);
-    Ok(Json(redact_config(new_config)))
+    Ok(Json(with_effective_auth_mode(
+        &state,
+        redact_config(new_config),
+    )))
 }
 
 // --- RSS feed handlers (feature-gated) ---

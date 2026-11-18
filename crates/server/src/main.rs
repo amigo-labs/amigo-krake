@@ -63,6 +63,14 @@ async fn main() -> anyhow::Result<()> {
         anyhow::bail!("Invalid configuration — refusing to start");
     }
 
+    // Login mode (spec `local-auth-bypass`): an unknown value, or `never`
+    // on a bind other people can reach, stops the start (AC-04, AC-10).
+    let auth_mode_env = krake_server::resolve_auth_mode(
+        &config,
+        krake_core::env::var("KRAKE_AUTH_MODE").ok().as_deref(),
+    )
+    .map_err(|e| anyhow::anyhow!("{e} — refusing to start"))?;
+
     // Headless setup: if `KRAKE_SETUP_USER` + `KRAKE_SETUP_PASSWORD` are
     // provided and the wizard has not been completed, finish it now so the
     // server comes up fully authenticated without the browser.
@@ -223,6 +231,10 @@ async fn main() -> anyhow::Result<()> {
         captcha_manager,
         webhook_dispatcher,
         config_path,
+        auth_mode_env,
+        bind_is_loopback: config.server.is_bind_loopback(),
+        config_lock: Arc::new(tokio::sync::Mutex::new(())),
+        config_epoch: Arc::new(tokio::sync::watch::channel(0).0),
     };
 
     // Feedback rate limiter

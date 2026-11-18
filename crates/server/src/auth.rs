@@ -179,6 +179,24 @@ pub enum Principal {
     ApiToken { id: String, name: String },
     /// Legacy pre-shared token.
     Preshared,
+    /// No login: the login mode lets this request in (spec
+    /// `local-auth-bypass`). Full rights, like the pre-shared token.
+    Local { mode: krake_core::config::AuthMode },
+}
+
+/// The principal for a request without a valid login that the login mode
+/// lets in, if it does (spec `local-auth-bypass`).
+pub async fn local_principal(
+    app: &AppState,
+    peer: Option<std::net::IpAddr>,
+    headers: &HeaderMap,
+    uri: &Uri,
+) -> Option<Principal> {
+    let config = app.coordinator.config().await;
+    let mode = app.auth_mode(&config);
+    let peer = peer?;
+    crate::local_auth::lets_in(mode, peer, headers, uri, config.server.trust_proxy)
+        .then_some(Principal::Local { mode })
 }
 
 /// Try every supported credential type. Returns `None` if nothing validates.
@@ -238,7 +256,14 @@ pub async fn require_auth(
     mut req: Request<Body>,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    let principal = authenticate(&auth, req.headers(), req.uri()).await;
+    let mut principal = authenticate(&auth, req.headers(), req.uri()).await;
+    if principal.is_none() {
+        let peer = req
+            .extensions()
+            .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+            .map(|c| c.0.ip());
+        principal = local_principal(&auth.app, peer, req.headers(), req.uri()).await;
+    }
     match principal {
         Some(p) => {
             req.extensions_mut().insert(p);

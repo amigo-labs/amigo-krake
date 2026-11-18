@@ -9,7 +9,8 @@ use std::sync::Arc;
 
 use axum::{
     Extension, Router,
-    extract::{State, WebSocketUpgrade, ws::Message},
+    extract::{ConnectInfo, State, WebSocketUpgrade, ws::Message},
+    http::{HeaderMap, Uri},
     response::Response,
     routing::get,
 };
@@ -33,6 +34,9 @@ async fn ws_handler(
     // auth-less test router (and any unauthenticated deployment) still works;
     // a missing principal is treated as admin — see `can_see`.
     principal: Option<Extension<Principal>>,
+    connect: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
+    headers: HeaderMap,
+    uri: Uri,
 ) -> Response {
     // Subscribe *before* the upgrade so the receiver is live by the time the
     // client sees the 101 response. If we subscribed inside `on_upgrade`,
@@ -41,7 +45,31 @@ async fn ws_handler(
     let rx = state.coordinator.subscribe();
     let coordinator = state.coordinator.clone();
     let principal = principal.map(|Extension(p)| p);
-    ws.on_upgrade(move |socket| handle_socket(socket, rx, coordinator, principal))
+    // A socket let in without a login is checked again after every config
+    // change and closed once the login mode no longer lets it in (AC-08).
+    let recheck = matches!(principal, Some(Principal::Local { .. })).then(|| LocalRecheck {
+        state: state.clone(),
+        peer: connect.map(|Extension(ConnectInfo(addr))| addr.ip()),
+        headers,
+        uri,
+    });
+    ws.on_upgrade(move |socket| handle_socket(socket, rx, coordinator, principal, recheck))
+}
+
+/// What a socket let in without a login needs to be checked again.
+struct LocalRecheck {
+    state: AppState,
+    peer: Option<std::net::IpAddr>,
+    headers: HeaderMap,
+    uri: Uri,
+}
+
+impl LocalRecheck {
+    async fn still_let_in(&self) -> bool {
+        crate::auth::local_principal(&self.state, self.peer, &self.headers, &self.uri)
+            .await
+            .is_some()
+    }
 }
 
 /// Whether `principal` is allowed to see events for a download owned by
@@ -50,7 +78,8 @@ async fn ws_handler(
 /// see everything; a login session sees only downloads it owns.
 fn can_see(principal: &Option<Principal>, owner: Option<&str>) -> bool {
     match principal {
-        None | Some(Principal::Preshared | Principal::ApiToken { .. }) => true,
+        None
+        | Some(Principal::Preshared | Principal::ApiToken { .. } | Principal::Local { .. }) => true,
         Some(Principal::Session { username, .. }) => owner == Some(username.as_str()),
     }
 }
@@ -60,11 +89,31 @@ async fn handle_socket(
     mut rx: Receiver<DownloadEvent>,
     coordinator: Arc<Coordinator>,
     principal: Option<Principal>,
+    recheck: Option<LocalRecheck>,
 ) {
     debug!("WebSocket client connected");
+    let mut epoch = recheck.as_ref().map(|r| r.state.config_epoch.subscribe());
 
     loop {
-        match rx.recv().await {
+        let received = match epoch.as_mut() {
+            None => rx.recv().await,
+            Some(epoch) => tokio::select! {
+                received = rx.recv() => received,
+                changed = epoch.changed() => {
+                    let still = match (&recheck, changed) {
+                        (Some(r), Ok(())) => r.still_let_in().await,
+                        _ => false,
+                    };
+                    if !still {
+                        debug!("Closing a WebSocket the login mode no longer lets in");
+                        let _ = socket.send(Message::Close(None)).await;
+                        break;
+                    }
+                    continue;
+                }
+            },
+        };
+        match received {
             Ok(event) => {
                 // Filter per principal. Events not tied to a download are
                 // global; download-scoped events are gated by ownership. The
@@ -72,7 +121,12 @@ async fn handle_socket(
                 let deliver = match event.subject_download_id() {
                     None => true,
                     Some(id) => match &principal {
-                        None | Some(Principal::Preshared | Principal::ApiToken { .. }) => true,
+                        None
+                        | Some(
+                            Principal::Preshared
+                            | Principal::ApiToken { .. }
+                            | Principal::Local { .. },
+                        ) => true,
                         Some(Principal::Session { .. }) => {
                             let owner = coordinator.download_owner(id).await;
                             can_see(&principal, owner.as_deref())

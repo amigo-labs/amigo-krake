@@ -256,17 +256,17 @@ Terms used below:
 
 | AC    | Test | Status | Commit |
 | ----- | ---- | ------ | ------ |
-| AC-01 |      | open   |        |
-| AC-02 |      | open   |        |
-| AC-03 |      | open   |        |
-| AC-04 |      | open   |        |
-| AC-05 |      | open   |        |
-| AC-06 |      | open   |        |
-| AC-07 |      | open   |        |
-| AC-08 |      | open   |        |
-| AC-09 |      | open   |        |
-| AC-10 |      | open   |        |
-| AC-11 |      | open   |        |
+| AC-01 | `crates/server/tests/local_auth_tests.rs`::always_is_the_default_and_needs_a_login + the unchanged `auth_flow_tests.rs`, `api_tests.rs`, `ws_tests.rs` | built |        |
+| AC-02 | `crates/server/src/local_auth.rs` tests (private_ranges, local_host_names, same_origin_rules, modes) + `crates/server/tests/local_auth_tests.rs`::private_lets_local_requests_in, ::private_refuses_other_hosts_and_origins | built |        |
+| AC-03 | `crates/server/src/local_auth.rs` tests::modes + `crates/server/tests/local_auth_tests.rs`::never_lets_direct_requests_in_on_a_loopback_bind | built |        |
+| AC-04 | `crates/server/tests/local_auth_tests.rs`::never_needs_a_loopback_bind_through_the_api, ::startup_refuses_unknown_modes_and_never_without_loopback | built |        |
+| AC-05 | `crates/server/src/local_auth.rs` tests (client_address_*, forwarded_*, unreadable_forwarded_entries_are_never_let_in) + `crates/server/tests/local_auth_tests.rs`::forwarded_requests_need_trust_proxy | built |        |
+| AC-06 | `crates/server/tests/local_auth_tests.rs`::a_valid_login_wins_and_an_invalid_one_falls_back | built |        |
+| AC-07 | `crates/server/tests/local_auth_tests.rs`::me_reports_the_mode_and_added_downloads_belong_to_no_one, ::websocket_without_login_sees_events_and_is_closed_when_the_mode_changes | built |        |
+| AC-08 | `crates/server/tests/local_auth_tests.rs`::websocket_without_login_sees_events_and_is_closed_when_the_mode_changes | built |        |
+| AC-09 | `crates/server/tests/local_auth_tests.rs`::environment_mode_overrides_the_file_and_is_fixed, ::startup_refuses_unknown_modes_and_never_without_loopback | built |        |
+| AC-10 | `crates/server/tests/local_auth_tests.rs`::unknown_modes_are_refused_through_the_api, ::startup_refuses_unknown_modes_and_never_without_loopback | built |        |
+| AC-11 | `crates/server/tests/local_auth_tests.rs`::a_mode_change_applies_to_the_next_request, ::concurrent_changes_cannot_combine_into_a_refused_state | built |        |
 | AC-12 |      | open   |        |
 | AC-13 |      | open   |        |
 | AC-14 |      | open   |        |
@@ -290,3 +290,16 @@ Terms used below:
 - 2026-11-18: Host, Origin and `Sec-Fetch-Site` checks are part of the feature, because
   without a login cookie nothing else stops a website in the user's browser
   (CSRF) or a rebinding domain from driving the API.
+- 2026-11-18 (spec-build): `never` through the API also needs the listener
+  bound to loopback at startup, not only the new `server.bind`, because a
+  bind change takes effect only after a restart; until then the server keeps
+  listening where it started.
+- 2026-11-18 (spec-build): The config keeps `server.auth_mode` as a string
+  (validated at startup and on `PUT /config`) so an unknown value in the file
+  is reported by name instead of silently falling back to the defaults, which
+  is what a failed TOML parse does today. `server.auth_mode_from_env` exists
+  only in API responses.
+- 2026-11-18 (spec-build): An open WebSocket let in without a login is
+  checked again after every `PUT /config` (a change counter in the app
+  state), not only on mode changes, so switching off `trust_proxy` closes it
+  too.
