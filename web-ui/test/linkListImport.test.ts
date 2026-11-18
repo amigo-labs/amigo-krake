@@ -167,3 +167,56 @@ describe("link list strings (AC-12)", () => {
     }
   });
 });
+
+describe("component wiring (AC-05, AC-06, AC-07, AC-09, AC-10)", async () => {
+  const mod = await import("../src/lib/linkListImport");
+  const { routeDroppedFile, inTextField, shouldImportPaste, chooseTextFile, problemMessage } = mod;
+  // A stand-in for a DOM element: `closest` finds a text field or not.
+  const el = (isField: boolean) => ({ closest: (_sel: string) => (isField ? {} : null) });
+
+  it("routes dropped files: .dlc, .nzb, everything else as a link list (AC-05)", () => {
+    expect(routeDroppedFile("a.DLC")).toBe("dlc");
+    expect(routeDroppedFile("b.nzb")).toBe("nzb");
+    expect(routeDroppedFile("links.txt")).toBe("link_list");
+    expect(routeDroppedFile("README")).toBe("link_list");
+  });
+
+  it("leaves drops and pastes into text fields alone (AC-07)", () => {
+    expect(inTextField(el(true))).toBe(true);
+    expect(inTextField(el(false))).toBe(false);
+    expect(inTextField(null)).toBe(false);
+    expect(shouldImportPaste(el(false), el(false))).toBe(true);
+    expect(shouldImportPaste(el(false), el(true))).toBe(false);
+    expect(shouldImportPaste(el(true), null)).toBe(false);
+  });
+
+  it("fills the field with the links and keeps the skipped count (AC-06)", () => {
+    const choice = chooseTextFile(prepareLinkList("https://a/1 note\nfoo\nhttps://a/2\n"), "old", "f.txt", t);
+    expect(choice).toEqual({ urlInput: "https://a/1\nhttps://a/2", fileSkipped: 1, problem: null });
+  });
+
+  it("keeps the field and names the problem for a file without links (AC-06, AC-09)", () => {
+    const choice = chooseTextFile(prepareLinkList("# none\n"), "old", "f.txt", t);
+    expect(choice).toEqual({ urlInput: "old", fileSkipped: 0, problem: "linklist.no_links{name=f.txt}" });
+  });
+
+  it("keeps the field and names the limit for a file over 1 MiB (AC-06, AC-10)", () => {
+    const choice = chooseTextFile({ kind: "too_large" }, "old", "big.txt", t);
+    expect(choice).toEqual({
+      urlInput: "old",
+      fileSkipped: 0,
+      problem: "linklist.too_large{name=big.txt,limit=1 MiB}",
+    });
+  });
+
+  it("names the text when no file name is given (AC-09)", () => {
+    expect(problemMessage("no_links", undefined, t)).toBe("linklist.no_links{name=linklist.the_text}");
+  });
+
+  it("the English messages say what AC-09 and AC-10 ask for", async () => {
+    const { tr } = await import("../src/lib/i18n");
+    expect(tr("en", "linklist.no_links", { name: "a.txt" })).toBe("a.txt contains no links");
+    expect(tr("en", "linklist.too_large", { name: "a.txt", limit: "1 MiB" })).toContain("1 MiB");
+    expect(tr("de", "linklist.too_large", { name: "a.txt", limit: "1 MiB" })).toContain("1 MiB");
+  });
+});

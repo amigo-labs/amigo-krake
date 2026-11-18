@@ -4,16 +4,10 @@
   import { locale, tr } from "../lib/i18n";
   import { isFileDrag, isInternalDrag } from "../lib/dnd";
   import { importLinkList, importLinkListFile } from "../lib/linkListActions";
+  import { inTextField, routeDroppedFile, shouldImportPaste } from "../lib/linkListImport";
 
   // Text dropped or pasted into a field belongs to that field: the browser
   // inserts it and the add panel queues it on submit (AC-07).
-  function inTextField(target: EventTarget | null): boolean {
-    return (
-      target instanceof Element &&
-      target.closest("input, textarea, select, [contenteditable]:not([contenteditable='false'])") !== null
-    );
-  }
-
   function isTextDrag(e: DragEvent): boolean {
     const types = e.dataTransfer?.types;
     return (
@@ -68,12 +62,12 @@
     const files = e.dataTransfer?.files;
     if (files && files.length > 0) {
       for (const file of files) {
-        const ext = file.name.split(".").pop()?.toLowerCase();
+        const route = routeDroppedFile(file.name);
         try {
-          if (ext === "dlc") {
+          if (route === "dlc") {
             await importDlc(file);
             addToast("success", tr($locale, "drop.dlc_imported"), file.name);
-          } else if (ext === "nzb") {
+          } else if (route === "nzb") {
             const text = await file.text();
             await uploadNzb(text);
             addToast("success", tr($locale, "drop.nzb_imported"), file.name);
@@ -89,7 +83,7 @@
 
   // Pasting text while no field has focus queues its links (AC-07).
   async function handlePaste(e: ClipboardEvent) {
-    if (inTextField(e.target) || inTextField(document.activeElement)) return;
+    if (!shouldImportPaste(e.target, document.activeElement)) return;
     const text = e.clipboardData?.getData("text/plain");
     if (!text) return;
     e.preventDefault();

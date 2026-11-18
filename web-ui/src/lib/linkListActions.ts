@@ -10,12 +10,15 @@ import { locale, tr, type TParams } from "./i18n";
 import {
   MAX_LIST_BYTES,
   prepareLinkList,
+  problemMessage,
   queueLinkList,
   resultToast,
   type ActiveDownloads,
   type ImportResult,
 } from "./linkListImport";
 import type { LinkList } from "./linkList";
+
+export { chooseTextFile } from "./linkListImport";
 
 const ACTIVE_STATUS = new Set(["queued", "downloading", "paused"]);
 
@@ -25,18 +28,14 @@ export function activeDownloads(): ActiveDownloads {
   return { urls: new Set(all.map((d) => d.url)), ids: new Set(all.map((d) => d.id)) };
 }
 
-function translator() {
+export function translator() {
   const lang = get(locale);
   return (key: string, params?: TParams) => tr(lang, key, params);
 }
 
 /** The message for a list that is too large or holds no link. */
 export function listProblem(kind: "too_large" | "no_links", name?: string): string {
-  const t = translator();
-  const subject = name ?? t("linklist.the_text");
-  return kind === "too_large"
-    ? t("linklist.too_large", { name: subject, limit: "1 MiB" })
-    : t("linklist.no_links", { name: subject });
+  return problemMessage(kind, name, translator());
 }
 
 /** Queue a parsed list and report it in one toast. */

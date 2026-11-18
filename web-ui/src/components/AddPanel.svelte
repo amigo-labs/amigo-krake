@@ -4,7 +4,7 @@
   import { locale, tr } from "../lib/i18n";
   import { parseLinkList } from "../lib/linkList";
   import { MAX_LIST_BYTES, prepareLinkList } from "../lib/linkListImport";
-  import { listProblem, queueAndReport } from "../lib/linkListActions";
+  import { chooseTextFile, listProblem, queueAndReport, translator } from "../lib/linkListActions";
   import Icon from "@amigo-labs/krake-ui/components/Icon.svelte";
 
   let urlInput = $state("");
@@ -58,13 +58,10 @@
           file.size > MAX_LIST_BYTES
             ? ({ kind: "too_large" } as const)
             : prepareLinkList(new Uint8Array(await file.arrayBuffer()), file.size);
-        if (prepared.kind === "ok") {
-          urlInput = prepared.list.links.join("\n");
-          fileSkipped = prepared.list.notRecognized;
-          fileProblem = null;
-        } else {
-          fileProblem = listProblem(prepared.kind, file.name);
-        }
+        const choice = chooseTextFile(prepared, urlInput, file.name, translator());
+        urlInput = choice.urlInput;
+        fileSkipped = choice.fileSkipped;
+        fileProblem = choice.problem;
         activeTab = "url";
         loading = false;
         input.value = "";

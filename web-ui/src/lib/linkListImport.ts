@@ -160,3 +160,66 @@ export function resultToast(result: ImportResult, t: Translate): ResultToast {
   const type = result.notSent > 0 || nothingQueued ? "error" : result.rejected.length > 0 ? "info" : "success";
   return { type, title, message: lines.length > 0 ? lines.join("\n") : undefined };
 }
+
+// ---- Component wiring, kept here so it is unit-tested ----
+
+export type DropRoute = "dlc" | "nzb" | "link_list";
+
+/** How a dropped file is imported: DLC and NZB by extension, anything
+ * else as a link list (AC-05). */
+export function routeDroppedFile(name: string): DropRoute {
+  const ext = name.split(".").pop()?.toLowerCase();
+  return ext === "dlc" ? "dlc" : ext === "nzb" ? "nzb" : "link_list";
+}
+
+const TEXT_FIELD = "input, textarea, select, [contenteditable]:not([contenteditable='false'])";
+
+/** Whether an event target is, or sits inside, a field that takes text. */
+export function inTextField(target: unknown): boolean {
+  const closest = (target as { closest?: unknown } | null)?.closest;
+  return typeof closest === "function" && closest.call(target, TEXT_FIELD) !== null;
+}
+
+/** A paste imports only while no text field has it or has focus (AC-07). */
+export function shouldImportPaste(target: unknown, activeElement: unknown): boolean {
+  return !inTextField(target) && !inTextField(activeElement);
+}
+
+/** The message for a list that is too large or holds no link (AC-09, AC-10). */
+export function problemMessage(
+  kind: "too_large" | "no_links",
+  name: string | undefined,
+  t: Translate,
+): string {
+  const subject = name ?? t("linklist.the_text");
+  return kind === "too_large"
+    ? t("linklist.too_large", { name: subject, limit: "1 MiB" })
+    : t("linklist.no_links", { name: subject });
+}
+
+export interface FileChoice {
+  /** The add panel's URL field after the choice. */
+  urlInput: string;
+  /** Lines of the file that were not links. */
+  fileSkipped: number;
+  /** Why the field was left as it was, if it was. */
+  problem: string | null;
+}
+
+/** The add panel after the user chose a text file (AC-06): the field holds
+ * the links, or keeps its content and a problem is named. */
+export function chooseTextFile(
+  prepared: PreparedList,
+  current: string,
+  name: string,
+  t: Translate,
+): FileChoice {
+  if (prepared.kind === "ok") {
+    return {
+      urlInput: prepared.list.links.join("\n"),
+      fileSkipped: prepared.list.notRecognized,
+      problem: null,
+    };
+  }
+  return { urlInput: current, fileSkipped: 0, problem: problemMessage(prepared.kind, name, t) };
+}
