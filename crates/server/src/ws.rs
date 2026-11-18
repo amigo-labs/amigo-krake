@@ -48,6 +48,10 @@ async fn ws_handler(
     // A socket let in without a login is checked again after every config
     // change and closed once the login mode no longer lets it in (AC-08).
     let recheck = matches!(principal, Some(Principal::Local { .. })).then(|| LocalRecheck {
+        // Subscribed here, before the upgrade; `handle_socket` checks once
+        // more right away, so a change between the auth decision and this
+        // subscription is not missed.
+        epoch: state.config_epoch.subscribe(),
         state: state.clone(),
         peer: connect.map(|Extension(ConnectInfo(addr))| addr.ip()),
         headers,
@@ -58,6 +62,7 @@ async fn ws_handler(
 
 /// What a socket let in without a login needs to be checked again.
 struct LocalRecheck {
+    epoch: tokio::sync::watch::Receiver<u64>,
     state: AppState,
     peer: Option<std::net::IpAddr>,
     headers: HeaderMap,
@@ -92,7 +97,13 @@ async fn handle_socket(
     recheck: Option<LocalRecheck>,
 ) {
     debug!("WebSocket client connected");
-    let mut epoch = recheck.as_ref().map(|r| r.state.config_epoch.subscribe());
+    let mut epoch = recheck.as_ref().map(|r| r.epoch.clone());
+    if let Some(r) = &recheck
+        && !r.still_let_in().await
+    {
+        let _ = socket.send(Message::Close(None)).await;
+        return;
+    }
 
     loop {
         let received = match epoch.as_mut() {

@@ -538,3 +538,70 @@ fn hosting_docs_describe_the_modes_and_their_limits() {
         );
     }
 }
+
+#[tokio::test]
+async fn websocket_through_a_proxy_is_closed_when_trust_proxy_goes_off() {
+    // AC-08: not only a mode change closes it.
+    let server = spawn_with(
+        |c| {
+            c.server.auth_mode = "private".into();
+            c.server.trust_proxy = true;
+        },
+        None,
+    )
+    .await;
+    let mut req = format!("ws://{}/api/v1/ws", server.addr)
+        .into_client_request()
+        .unwrap();
+    req.headers_mut()
+        .insert("x-forwarded-for", "192.168.1.5".parse().unwrap());
+    let (mut ws, response) = tokio_tungstenite::connect_async(req)
+        .await
+        .expect("ws connect");
+    assert_eq!(response.status(), 101);
+
+    assert_eq!(
+        server
+            .put_with(|c| c["server"]["trust_proxy"] = false.into())
+            .await,
+        200
+    );
+    let closed = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            match ws.next().await {
+                None | Some(Err(_)) => return true,
+                Some(Ok(m)) if m.is_close() => return true,
+                Some(Ok(_)) => continue,
+            }
+        }
+    })
+    .await
+    .unwrap_or(false);
+    assert!(
+        closed,
+        "the websocket must be closed once trust_proxy is off"
+    );
+}
+
+#[tokio::test]
+async fn webhook_changes_cannot_undo_a_mode_change() {
+    // AC-11: every config write goes through the same queue.
+    for i in 0..10 {
+        let server = spawn("private").await;
+        let mut always = server.get_config().await;
+        always["server"]["auth_mode"] = "always".into();
+        let hook = client()
+            .post(server.url("/api/v1/webhooks"))
+            .bearer_auth(TOKEN)
+            .json(&serde_json::json!({"name": format!("h{i}"), "url": "https://8.8.8.8/hook"}))
+            .send();
+        let (put, hook) = tokio::join!(server.put_config(&always), hook);
+        assert_eq!(put.status(), 200);
+        assert!(hook.unwrap().status().is_success());
+        assert_eq!(
+            server.state.coordinator.config().await.server.auth_mode,
+            "always",
+            "a webhook write restored the old mode"
+        );
+    }
+}

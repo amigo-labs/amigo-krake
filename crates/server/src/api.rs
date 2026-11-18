@@ -1380,6 +1380,9 @@ async fn cancel_captcha(
 /// previously create/delete only touched the dispatcher, so hooks vanished on
 /// restart and `GET /config` disagreed with `GET /webhooks`.
 async fn persist_webhooks(state: &AppState) {
+    // Same queue as `PUT /config`: a stale snapshot written here must never
+    // undo a concurrent config change (spec `local-auth-bypass`, AC-11).
+    let _change = state.config_lock.lock().await;
     let endpoints = state.webhook_dispatcher.list_endpoints().await;
     let mut config = state.coordinator.config().await;
     config.webhooks = endpoints;
@@ -1391,6 +1394,7 @@ async fn persist_webhooks(state: &AppState) {
         return;
     }
     state.coordinator.update_config(config).await;
+    state.config_epoch.send_modify(|epoch| *epoch += 1);
 }
 
 async fn list_webhooks(State(state): State<AppState>) -> Json<serde_json::Value> {

@@ -192,9 +192,9 @@ fn default_session_ttl_secs() -> i64 {
 }
 
 impl ServerConfig {
-    /// `true` if the bind address is a loopback host (127.0.0.1 / ::1 /
-    /// localhost). On loopback we skip setup entirely — a Tauri desktop,
-    /// a local `krake-server` run, or a dev run are trusted by construction.
+    /// `true` if the bind address is a loopback host (any loopback IP
+    /// literal such as 127.0.0.1 or ::1, or `localhost`). On loopback the
+    /// setup wizard is skipped, and only there may `auth_mode` be `never`.
     pub fn is_bind_loopback(&self) -> bool {
         let host = self
             .bind
@@ -203,7 +203,10 @@ impl ServerConfig {
             .unwrap_or(self.bind.as_str())
             .trim_start_matches('[')
             .trim_end_matches(']');
-        matches!(host, "127.0.0.1" | "::1" | "localhost")
+        host.eq_ignore_ascii_case("localhost")
+            || host
+                .parse::<std::net::IpAddr>()
+                .is_ok_and(|ip| ip.is_loopback())
     }
 }
 
@@ -553,6 +556,33 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn loopback_binds_are_any_loopback_literal_or_localhost() {
+        // Spec local-auth-bypass, "Loopback bind": the UI and the server agree.
+        let bind = |b: &str| ServerConfig {
+            bind: b.into(),
+            ..ServerConfig::default()
+        };
+        for b in [
+            "127.0.0.1:1516",
+            "127.0.0.5:80",
+            "[::1]:1516",
+            "localhost:1516",
+            "LOCALHOST:1",
+        ] {
+            assert!(bind(b).is_bind_loopback(), "{b}");
+        }
+        for b in [
+            "0.0.0.0:1516",
+            "[::]:1516",
+            "192.168.1.10:1516",
+            "krake.lan:1516",
+            "128.0.0.1:1",
+        ] {
+            assert!(!bind(b).is_bind_loopback(), "{b}");
+        }
+    }
 
     #[test]
     fn webhook_blank_secret_is_regenerated() {
