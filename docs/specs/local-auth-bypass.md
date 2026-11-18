@@ -35,7 +35,9 @@ Facts this spec builds on:
 
 - A login mode with three values: **always** (default, today's behavior),
   **private** (no login for requests from private networks), **never** (no
-  login at all, only allowed while the server listens on loopback only).
+  login for direct requests on this machine, only allowed while the server
+  listens on loopback only; forwarded requests are checked as in
+  **private**).
 - The mode in the config file, an environment variable that overrides it,
   and a Security section in the web UI settings.
 - Protection against other websites and DNS rebinding while a request is let
@@ -78,9 +80,10 @@ Terms used below:
   is against DNS rebinding; the address rule (AC-02, AC-05) decides who is
   local.
 - **Same origin** — the request carries no `Origin` header or exactly one
-  whose host and port equal those of `Host` (case-insensitive, a missing
-  port read as 80 for `http` and 443 for `https`); `Origin: null` is not
-  same origin. In addition, a `Sec-Fetch-Site` header, when present, is
+  whose host equals the host of `Host` (case-insensitive) and whose port
+  equals the port of `Host`, where a missing port on either side means the
+  default port of the `Origin`'s scheme (80 for `http`, 443 for `https`);
+  `Origin: null` is not same origin. In addition, a `Sec-Fetch-Site` header, when present, is
   `same-origin` or `none`.
 - **Let in without login** — the request is served with full rights, as
   the pre-shared `api_token` is today, although it carries no valid
@@ -114,12 +117,16 @@ Terms used below:
 - [ ] AC-05 (always): The client address for AC-02 is the peer address of
   the connection. Only while `trust_proxy` is on and the peer address itself
   is a private address (the proxy), and the request carries
-  `X-Forwarded-For` (all header lines read as one list; else `Forwarded`),
-  the client address is the last entry of that list, port removed. While
+  `X-Forwarded-For` (all header lines read as one list; else the `for=`
+  entries of `Forwarded`), the client address is found by reading that list
+  from the end, ports removed, skipping private addresses: the first entry
+  that is not a private address is the client address; if every entry is a
+  private address, the client address is the first entry. While
   `trust_proxy` is off, or the peer address is not private, a request that
   carries `X-Forwarded-For` or `Forwarded` is never let in without login. A
-  last entry that is not an IP address (`unknown`, an obfuscated name,
-  garbage) is never let in without login.
+  list entry read before the client address is found that is not an IP
+  address (`unknown`, an obfuscated name, garbage) means the request is
+  never let in without login.
 - [ ] AC-06 (always): A request that carries a valid login is served as that
   principal in every mode. A request with an invalid, expired or revoked
   login that meets AC-02 or AC-03 is let in without login.
@@ -130,24 +137,29 @@ Terms used below:
   download and every WebSocket event (as the admin does), downloads it adds
   belong to no user, and `GET /api/v1/me` reports that it was let in without
   login and under which mode.
-- [ ] AC-08 (event): When the login mode changes to one under which an open
-  WebSocket would no longer be let in, then the server closes that
-  WebSocket.
+- [ ] AC-08 (event): When the config changes (login mode, `trust_proxy` or
+  anything else that AC-02 to AC-05 depend on), then every open WebSocket
+  that was let in without login is checked again, and the server closes each
+  one that would no longer be let in.
 
 ### Configuration
 
 - [ ] AC-09 (option): Where the environment variable `KRAKE_AUTH_MODE` is
   set (non-empty after trimming, case-insensitive), it overrides the config
-  file; a config change through the API that changes the mode is then
-  refused with `400`, and the web UI shows the mode as set by the
-  environment and does not offer to change it.
+  file. The config read through the API then reports the mode in effect and
+  that the environment sets it; a config change through the API that sends a
+  different mode is refused with `400`, one that sends the mode in effect is
+  accepted and leaves the file's value as it was. The web UI shows the mode
+  as set by the environment and does not offer to change it.
 - [ ] AC-10 (error): If the config file or `KRAKE_AUTH_MODE` holds a value
   other than `always`, `private` or `never`, then the server refuses to start
   and names the value and the allowed values; through the API such a value
   is refused with `400`.
 - [ ] AC-11 (event): When the login mode is changed through the API, then
   every request that starts after the change is checked under the new mode,
-  without a restart.
+  without a restart. Config changes through the API are validated and stored
+  one after another, each against the config it replaces, so two concurrent
+  changes cannot together reach a state that AC-04 refuses.
 
 ### Web UI
 
@@ -158,7 +170,8 @@ Terms used below:
   shows the three modes, each with an explanation of who gets in without
   login, the current mode, and a warning that in **private** and **never**
   every device that gets in has full control, including the config and the
-  admin password.
+  admin password, and that behind Docker Desktop, rootless Docker or Podman,
+  or a tunnel every request may look local, so such setups keep **always**.
 - [ ] AC-14 (state): While the server has no loopback bind, the mode
   **never** is shown disabled with the reason.
 - [ ] AC-15 (event): When the user switches to **private** or **never**, then
@@ -169,12 +182,13 @@ Terms used below:
 ### Docs
 
 - [ ] AC-17 (always): The hosting documentation describes the three modes
-  and `KRAKE_AUTH_MODE`; that requests through a reverse proxy count as
-  private only with `trust_proxy` on and only when the proxy forwards a
-  local host name (a public domain keeps the login); that IPv6 clients with
+  and `KRAKE_AUTH_MODE`; that requests through a reverse proxy (or a chain
+  of proxies) count as private only with `trust_proxy` on and only when the
+  proxy forwards a local host name (a public domain keeps the login); that IPv6 clients with
   global addresses need a login; and that whatever forwards connections
-  without `X-Forwarded-For` (Docker's userland proxy, SSH or socat tunnels,
-  tunnel daemons) makes internet requests look private, so such setups must
+  without `X-Forwarded-For` (Docker Desktop, rootless Docker or Podman,
+  Docker's userland proxy, SSH or socat tunnels, tunnel daemons) makes
+  internet requests look private, so such setups must
   stay on **always**.
 
 ## Technical notes
@@ -188,7 +202,9 @@ Terms used below:
   unowned like `Preshared`. `/me` could return
   `{"kind": "local", "mode": "private" | "never"}`.
 - `client_ip` today returns the *first* forwarded hop, which a client can
-  forge; AC-05 needs the last one for this check. The rate limiters may keep
+  forge; AC-05 reads the list from the end instead (the usual
+  "rightmost non-trusted address" rule with private addresses as trusted
+  proxies). The rate limiters may keep
   their behavior.
 - `setup_guard` and the setup wizard are unchanged: a server that has not
   finished setup behaves as today in every mode.
@@ -206,6 +222,9 @@ Terms used below:
 | Mode private, `trust_proxy` on, client sends `X-Forwarded-For: 192.168.1.5`, proxy appends `203.0.113.7` | Last entry public → login needed |
 | Mode private, `trust_proxy` on, internet client connects directly (port forward) with forged `X-Forwarded-For: 192.168.1.5` | Peer address public → login needed |
 | Mode private, `trust_proxy` on, LAN client connects directly without forwarded headers | Peer address private → let in without login |
+| Mode private, cloudflared container → nginx container, internet client `198.51.100.4` | List `198.51.100.4, 172.18.0.3` → first non-private from the end is public → login needed |
+| Mode private, `GET /config` while `KRAKE_AUTH_MODE=private`, then the UI saves an unrelated setting | PUT carries the mode in effect → accepted, file value kept |
+| Mode private, `trust_proxy` switched off while a phone behind the proxy has the UI open | Its WebSocket is closed (AC-08); next request needs login |
 | Mode private, request from another Docker container (`172.18.0.5`) | Private → let in without login (documented) |
 | Mode never, `KRAKE_BIND=0.0.0.0:1516` | Server refuses to start (AC-04) |
 | Mode never, `PUT /config` sets `server.bind = "0.0.0.0:1516"` | `400`, config unchanged (AC-04) |
@@ -227,7 +246,7 @@ Terms used below:
 | IPv6 global addresses are not private | A fixed list cannot know the LAN's prefix; the user chose the fixed set | IPv6 clients on the LAN must log in |
 | The peer address is the real client unless a proxy says otherwise | Krake cannot see through forwarders that drop the client address | Setups with such forwarders let the internet in; AC-17 tells them to stay on **always** |
 | An invalid or revoked login falls back to the network rule | The network rule alone decides who gets in without login; a stale cookie should not lock a LAN user out | A revoked token keeps working from the LAN while the mode allows it |
-| `Sec-Fetch-Site` and `Origin` keep browsers out of cross-site requests | Every current browser sends `Sec-Fetch-Site`; old browsers still send `Origin` on non-GET requests | An old browser allows cross-site GET without either header |
+| `Sec-Fetch-Site` and `Origin` keep browsers out of cross-site requests | Every current browser sends `Sec-Fetch-Site`; old browsers still send `Origin` on non-GET requests | An old browser allows cross-site GET without either header; acceptable because no Krake GET endpoint changes state |
 
 ## Open questions
 
