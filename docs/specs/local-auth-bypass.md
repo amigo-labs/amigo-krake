@@ -1,5 +1,5 @@
 ---
-status: todo
+status: implemented
 created: 2026-11-18
 size: M
 design: [AGENTS.md "REST API", AGENTS.md Entscheidung 18, docs/hosting.md, docs/architecture.md]
@@ -94,19 +94,19 @@ Terms used below:
 
 ### Modes
 
-- [ ] AC-01 (always): Krake's login mode is **always** unless the config or
+- [x] AC-01 (always): Krake's login mode is **always** unless the config or
   the environment sets another mode. In mode **always** no request is let in
   without login, and every existing authentication test passes unchanged.
-- [ ] AC-02 (option): Where the login mode is **private**, a request to the
+- [x] AC-02 (option): Where the login mode is **private**, a request to the
   REST API or the WebSocket is let in without login if its client address
   (AC-05) is a private address, its `Host` is a local host name and it is
   same origin; any other request without a valid login gets `401` as
   before.
-- [ ] AC-03 (option): Where the login mode is **never**, a request to the
+- [x] AC-03 (option): Where the login mode is **never**, a request to the
   REST API or the WebSocket is let in without login if its `Host` is a local
   host name and it is same origin; a request that carries `X-Forwarded-For`
   or `Forwarded` is checked as in mode **private**.
-- [ ] AC-04 (error): If the login mode is **never** without a loopback bind,
+- [x] AC-04 (error): If the login mode is **never** without a loopback bind,
   then the server refuses to start and names the setting and the bind
   address. A config change through the API that would result in mode
   **never** without a loopback bind (a change of the mode, of the bind, or
@@ -114,7 +114,7 @@ Terms used below:
 
 ### Address checks
 
-- [ ] AC-05 (always): The client address for AC-02 is the peer address of
+- [x] AC-05 (always): The client address for AC-02 is the peer address of
   the connection. Only while `trust_proxy` is on and the peer address itself
   is a private address (the proxy), and the request carries
   `X-Forwarded-For` (all header lines read as one list; else the `for=`
@@ -127,35 +127,35 @@ Terms used below:
   list entry read before the client address is found that is not an IP
   address (`unknown`, an obfuscated name, garbage) means the request is
   never let in without login.
-- [ ] AC-06 (always): A request that carries a valid login is served as that
+- [x] AC-06 (always): A request that carries a valid login is served as that
   principal in every mode. A request with an invalid, expired or revoked
   login that meets AC-02 or AC-03 is let in without login.
 
 ### What a request without login sees
 
-- [ ] AC-07 (state): While a request is let in without login, it sees every
+- [x] AC-07 (state): While a request is let in without login, it sees every
   download and every WebSocket event (as the admin does), downloads it adds
   belong to no user, and `GET /api/v1/me` reports that it was let in without
   login and under which mode.
-- [ ] AC-08 (event): When the config changes (login mode, `trust_proxy` or
+- [x] AC-08 (event): When the config changes (login mode, `trust_proxy` or
   anything else that AC-02 to AC-05 depend on), then every open WebSocket
   that was let in without login is checked again, and the server closes each
   one that would no longer be let in.
 
 ### Configuration
 
-- [ ] AC-09 (option): Where the environment variable `KRAKE_AUTH_MODE` is
+- [x] AC-09 (option): Where the environment variable `KRAKE_AUTH_MODE` is
   set (non-empty after trimming, case-insensitive), it overrides the config
   file. The config read through the API then reports the mode in effect and
   that the environment sets it; a config change through the API that sends a
   different mode is refused with `400`, one that sends the mode in effect is
   accepted and leaves the file's value as it was. The web UI shows the mode
   as set by the environment and does not offer to change it.
-- [ ] AC-10 (error): If the config file or `KRAKE_AUTH_MODE` holds a value
+- [x] AC-10 (error): If the config file or `KRAKE_AUTH_MODE` holds a value
   other than `always`, `private` or `never`, then the server refuses to start
   and names the value and the allowed values; through the API such a value
   is refused with `400`.
-- [ ] AC-11 (event): When the login mode is changed through the API, then
+- [x] AC-11 (event): When the login mode is changed through the API, then
   every request that starts after the change is checked under the new mode,
   without a restart. Config changes through the API are validated and stored
   one after another, each against the config it replaces, so two concurrent
@@ -163,25 +163,25 @@ Terms used below:
 
 ### Web UI
 
-- [ ] AC-12 (state): While the server lets the browser in without login, the
+- [x] AC-12 (state): While the server lets the browser in without login, the
   web UI opens directly without its login page. When a later request gets
   `401` (the mode was switched back), the web UI shows its login page.
-- [ ] AC-13 (event): When the user opens Settings ▸ Security, then the UI
+- [x] AC-13 (event): When the user opens Settings ▸ Security, then the UI
   shows the three modes, each with an explanation of who gets in without
   login, the current mode, and a warning that in **private** and **never**
   every device that gets in has full control, including the config and the
   admin password, and that behind Docker Desktop, rootless Docker or Podman,
   or a tunnel every request may look local, so such setups keep **always**.
-- [ ] AC-14 (state): While the server has no loopback bind, the mode
+- [x] AC-14 (state): While the server has no loopback bind, the mode
   **never** is shown disabled with the reason.
-- [ ] AC-15 (event): When the user switches to **private** or **never**, then
+- [x] AC-15 (event): When the user switches to **private** or **never**, then
   the UI asks for confirmation first; nothing changes if the user cancels.
-- [ ] AC-16 (always): Every new user-visible string of this spec exists in
+- [x] AC-16 (always): Every new user-visible string of this spec exists in
   English and German.
 
 ### Docs
 
-- [ ] AC-17 (always): The hosting documentation describes the three modes
+- [x] AC-17 (always): The hosting documentation describes the three modes
   and `KRAKE_AUTH_MODE`; that requests through a reverse proxy (or a chain
   of proxies) count as private only with `trust_proxy` on and only when the
   proxy forwards a local host name (a public domain keeps the login); that IPv6 clients with
@@ -256,23 +256,33 @@ Terms used below:
 
 | AC    | Test | Status | Commit |
 | ----- | ---- | ------ | ------ |
-| AC-01 | `crates/server/tests/local_auth_tests.rs`::always_is_the_default_and_needs_a_login + the unchanged `auth_flow_tests.rs`, `api_tests.rs`, `ws_tests.rs` | built |        |
-| AC-02 | `crates/server/src/local_auth.rs` tests (private_ranges, local_host_names, same_origin_rules, modes) + `crates/server/tests/local_auth_tests.rs`::private_lets_local_requests_in, ::private_refuses_other_hosts_and_origins | built |        |
-| AC-03 | `crates/server/src/local_auth.rs` tests::modes + `crates/server/tests/local_auth_tests.rs`::never_lets_direct_requests_in_on_a_loopback_bind | built |        |
-| AC-04 | `crates/server/tests/local_auth_tests.rs`::never_needs_a_loopback_bind_through_the_api, ::startup_refuses_unknown_modes_and_never_without_loopback | built |        |
-| AC-05 | `crates/server/src/local_auth.rs` tests (client_address_*, forwarded_*, unreadable_forwarded_entries_are_never_let_in) + `crates/server/tests/local_auth_tests.rs`::forwarded_requests_need_trust_proxy + `local_auth::tests::unreadable_forwarded_entries_are_never_let_in` (header lines that are not text) | built |        |
-| AC-06 | `crates/server/tests/local_auth_tests.rs`::a_valid_login_wins_and_an_invalid_one_falls_back | built |        |
-| AC-07 | `crates/server/tests/local_auth_tests.rs`::me_reports_the_mode_and_added_downloads_belong_to_no_one, ::websocket_without_login_sees_events_and_is_closed_when_the_mode_changes | built |        |
-| AC-08 | `crates/server/tests/local_auth_tests.rs`::websocket_without_login_sees_events_and_is_closed_when_the_mode_changes + `crates/server/tests/local_auth_tests.rs`::websocket_through_a_proxy_is_closed_when_trust_proxy_goes_off | built |        |
-| AC-09 | `crates/server/tests/local_auth_tests.rs`::environment_mode_overrides_the_file_and_is_fixed, ::startup_refuses_unknown_modes_and_never_without_loopback + `web-ui/test/settingsSecurity.test.ts` (a mode set by the environment is locked) | built |        |
-| AC-10 | `crates/server/tests/local_auth_tests.rs`::unknown_modes_are_refused_through_the_api, ::startup_refuses_unknown_modes_and_never_without_loopback | built |        |
-| AC-11 | `crates/server/tests/local_auth_tests.rs`::a_mode_change_applies_to_the_next_request, ::concurrent_changes_cannot_combine_into_a_refused_state + `crates/server/tests/local_auth_tests.rs`::webhook_changes_cannot_undo_a_mode_change | built |        |
-| AC-12 | `web-ui/test/security.test.ts` (boot: opens without login page; shows the login page on 401; a later 401 flips to login) + `crates/server/tests/local_auth_tests.rs::me_reports_the_mode_and_added_downloads_belong_to_no_one` | built |        |
-| AC-13 | `web-ui/test/security.test.ts` (securityView: mode in effect; environment) + browser check (Decisions) + `web-ui/test/settingsSecurity.test.ts` (shows the three modes with explanations, the current mode and the warning; renders in German too) + `web-ui/test/saveConfig.test.ts` (the page shows only what the server stored) | built |        |
-| AC-14 | `web-ui/test/security.test.ts` (securityView: never only on a loopback bind; reads loopback binds) + `web-ui/test/settingsSecurity.test.ts` (never needs a loopback bind) + `crates/core/src/config.rs::loopback_binds_are_any_loopback_literal_or_localhost` | built |        |
-| AC-15 | `web-ui/test/security.test.ts` (needsConfirmation) + browser check (Decisions) + `web-ui/test/settingsSecurity.test.ts` (chooseMode) + `web-ui/test/settingsSecurity.dom.test.ts` (asks first and changes nothing on cancel; saves once allowed; turns the login back on without asking) | built |        |
-| AC-16 | `web-ui/test/security.test.ts` (security strings) | built |        |
-| AC-17 | `crates/server/tests/local_auth_tests.rs::hosting_docs_describe_the_modes_and_their_limits` (docs/hosting.md, "Login for your own network") | built |        |
+| AC-01 | `crates/server/tests/local_auth_tests.rs`::always_is_the_default_and_needs_a_login + unchanged `auth_flow_tests.rs` (7), `api_tests.rs` (39), `ws_tests.rs` (6) | verified | 20660fb |
+| AC-02 | `crates/server/src/local_auth.rs`::tests::{private_ranges, local_host_names, same_origin_rules, modes} + `crates/server/tests/local_auth_tests.rs`::private_lets_local_requests_in, ::private_refuses_other_hosts_and_origins | verified | f26d123 |
+| AC-03 | `crates/server/src/local_auth.rs`::tests::modes + `crates/server/tests/local_auth_tests.rs`::never_lets_direct_requests_in_on_a_loopback_bind | verified | f26d123 |
+| AC-04 | `crates/server/tests/local_auth_tests.rs`::never_needs_a_loopback_bind_through_the_api, ::startup_refuses_unknown_modes_and_never_without_loopback | verified | 20660fb |
+| AC-05 | `crates/server/src/local_auth.rs`::tests::{client_address_without_forwarding_is_the_peer, forwarded_requests_need_trust_proxy_and_a_private_peer, forwarded_list_is_read_from_the_end_skipping_private_hops, unreadable_forwarded_entries_are_never_let_in} + `crates/server/tests/local_auth_tests.rs`::forwarded_requests_need_trust_proxy | verified | f26d123 |
+| AC-06 | `crates/server/tests/local_auth_tests.rs`::a_valid_login_wins_and_an_invalid_one_falls_back | verified | 20660fb |
+| AC-07 | `crates/server/tests/local_auth_tests.rs`::me_reports_the_mode_and_added_downloads_belong_to_no_one, ::websocket_without_login_sees_events_and_is_closed_when_the_mode_changes | verified | 20660fb |
+| AC-08 | `crates/server/tests/local_auth_tests.rs`::websocket_without_login_sees_events_and_is_closed_when_the_mode_changes, ::websocket_through_a_proxy_is_closed_when_trust_proxy_goes_off | verified | 20660fb |
+| AC-09 | `crates/server/tests/local_auth_tests.rs`::environment_mode_overrides_the_file_and_is_fixed, ::startup_refuses_unknown_modes_and_never_without_loopback + `crates/core/src/config.rs`::tests::auth_mode_from_env_is_never_read_from_the_file + `web-ui/test/settingsSecurity.test.ts` (a mode set by the environment is locked) | verified | 20660fb |
+| AC-10 | `crates/server/tests/local_auth_tests.rs`::unknown_modes_are_refused_through_the_api, ::startup_refuses_unknown_modes_and_never_without_loopback | verified | 20660fb |
+| AC-11 | `crates/server/tests/local_auth_tests.rs`::a_mode_change_applies_to_the_next_request, ::concurrent_changes_cannot_combine_into_a_refused_state, ::webhook_changes_cannot_undo_a_mode_change | verified | 20660fb |
+| AC-12 | `web-ui/test/security.test.ts` (boot AC-12: three cases) + `crates/server/tests/local_auth_tests.rs`::me_reports_the_mode_and_added_downloads_belong_to_no_one | verified | 1644c99 |
+| AC-13 | `web-ui/test/settingsSecurity.test.ts` (shows the three modes with explanations, the current mode and the warning) + `web-ui/test/security.test.ts` (securityView) + `web-ui/test/saveConfig.test.ts` | verified | 1644c99 |
+| AC-14 | `web-ui/test/settingsSecurity.test.ts` (never needs a loopback bind) + `web-ui/test/security.test.ts` (reads loopback binds) + `crates/core/src/config.rs`::tests::loopback_binds_are_any_loopback_literal_or_localhost | verified | 1644c99 |
+| AC-15 | `web-ui/test/settingsSecurity.dom.test.ts` (choosing a mode: asks first and changes nothing on cancel; saves once allowed; turns the login back on without asking) + `web-ui/test/settingsSecurity.test.ts` (chooseMode) + `web-ui/test/security.test.ts` (needsConfirmation) | verified | 1644c99 |
+| AC-16 | `web-ui/test/security.test.ts` (security strings) + `web-ui/test/settingsSecurity.test.ts` (renders in German too) | verified | 1644c99 |
+| AC-17 | `crates/server/tests/local_auth_tests.rs`::hosting_docs_describe_the_modes_and_their_limits (docs/hosting.md, "Login for your own network") | verified | 76b244c |
+
+## Summary
+
+> Completed: 2026-11-18
+
+- `server.auth_mode` (`always` default, `private`, `never`) with the `KRAKE_AUTH_MODE` override, validated at startup and on `PUT /config`; `never` only on a loopback bind.
+- `crates/server/src/local_auth.rs` decides login-free access: private client address (forwarded lists read from the end, only with `trust_proxy` and a private peer), local host name and same origin; the auth middleware adds `Principal::Local`, `/me` reports it.
+- Config writes (`PUT /config`, webhooks, setup wizard) are serialized; open WebSockets let in without a login are rechecked after every config change and closed when no longer allowed.
+- Settings ▸ Security in the web UI (three modes, warning, environment lock, `never` disabled off loopback, confirmation before turning the login off); the app opens without its login page when let in.
+- `docs/hosting.md` documents the modes, proxies, IPv6 and forwarders that hide the client.
 
 ## Decisions
 
