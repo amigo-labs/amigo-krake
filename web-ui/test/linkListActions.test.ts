@@ -50,6 +50,12 @@ describe("importLinkList (AC-05, AC-09, AC-10)", () => {
     expect(addToast.mock.calls[0][0]).toBe("success");
   });
 
+  it("shows rejected links on several lines until the toast is closed (AC-08)", async () => {
+    addBatch.mockImplementationOnce(async () => ({ ids: ["i1"], errors: ["http://10.0.0.1/x: private"] }));
+    await importLinkList("https://a/1\nhttp://10.0.0.1/x\n");
+    expect(addToast.mock.calls[0][3]).toEqual({ multiline: true, duration: 0 });
+  });
+
   it("sends nothing and says so for a list without links (AC-09)", async () => {
     await importLinkList("hello\n", "a.txt");
     expect(addBatch).not.toHaveBeenCalled();

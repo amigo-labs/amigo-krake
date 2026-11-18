@@ -144,6 +144,18 @@ describe("resultToast", () => {
     expect(toast.message).toContain("HTTP 500");
   });
 
+  it("keeps its lines and stays until closed when it lists links (AC-08, AC-11)", () => {
+    const toast = resultToast({ ...base, queued: 1, rejected: [{ url: "https://r/1", reason: "bad" }] }, t);
+    expect(toast.multiline).toBe(true);
+    expect(toast.sticky).toBe(true);
+    expect(resultToast({ ...base, queued: 1 }, t).sticky).toBe(false);
+  });
+
+  it("has a title even when nothing was sent", () => {
+    const toast = resultToast({ ...base, notSent: 3, failure: "HTTP 500" }, t);
+    expect(toast.title).toBe("linklist.queued{count=0}");
+  });
+
   it("is an error when nothing was queued", () => {
     const toast = resultToast({ ...base, rejected: [{ url: "https://r/1", reason: "bad" }] }, t);
     expect(toast.type).toBe("error");

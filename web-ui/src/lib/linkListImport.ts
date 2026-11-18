@@ -129,6 +129,10 @@ export interface ResultToast {
   type: "success" | "error" | "info";
   title: string;
   message?: string;
+  /** The message lists links: show every line. */
+  multiline: boolean;
+  /** The message needs reading: keep it until the user closes it. */
+  sticky: boolean;
 }
 
 /** How many rejected links the toast names before "and N more". */
@@ -143,10 +147,11 @@ export function resultToast(result: ImportResult, t: Translate): ResultToast {
     ["linklist.rejected", result.rejected.length],
     ["linklist.not_recognized", result.notRecognized],
   ];
-  const title = counts
-    .filter(([, n]) => n > 0)
-    .map(([key, n]) => t(key, { count: n }))
-    .join(" · ");
+  const title =
+    counts
+      .filter(([, n]) => n > 0)
+      .map(([key, n]) => t(key, { count: n }))
+      .join(" · ") || t("linklist.queued", { count: 0 });
 
   const lines = result.rejected.slice(0, SHOWN_REJECTED).map((r) => `${r.url} — ${r.reason}`);
   if (result.rejected.length > SHOWN_REJECTED) {
@@ -158,7 +163,8 @@ export function resultToast(result: ImportResult, t: Translate): ResultToast {
 
   const nothingQueued = result.queued + result.alreadyQueued === 0;
   const type = result.notSent > 0 || nothingQueued ? "error" : result.rejected.length > 0 ? "info" : "success";
-  return { type, title, message: lines.length > 0 ? lines.join("\n") : undefined };
+  const message = lines.length > 0 ? lines.join("\n") : undefined;
+  return { type, title, message, multiline: true, sticky: message !== undefined };
 }
 
 // ---- Component wiring, kept here so it is unit-tested ----

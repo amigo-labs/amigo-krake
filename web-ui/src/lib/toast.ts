@@ -13,12 +13,16 @@ export interface Toast {
   action?: ToastAction;
   /** Auto-dismiss delay in ms. 0 keeps the toast until dismissed. */
   duration: number;
+  /** Show every line of the message instead of two clamped lines. */
+  multiline?: boolean;
 }
 
 export interface ToastOptions {
   action?: ToastAction;
   /** Override the auto-dismiss delay (ms). 0 = sticky. */
   duration?: number;
+  /** Keep the message's line breaks and show all of it. */
+  multiline?: boolean;
 }
 
 // Errors linger longer than successes — they usually carry something to read.
@@ -41,7 +45,7 @@ export function addToast(
 ): number {
   const id = nextId++;
   const duration = opts?.duration ?? DEFAULT_DURATIONS[type];
-  toasts.update((t) => [...t, { id, type, title, message, action: opts?.action, duration }]);
+  toasts.update((t) => [...t, { id, type, title, message, action: opts?.action, duration, multiline: opts?.multiline }]);
   if (duration > 0) scheduleRemoval(id, duration);
   return id;
 }

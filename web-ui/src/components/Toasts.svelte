@@ -76,7 +76,12 @@
       <div class="flex-1 min-w-0">
         <p class="text-sm font-semibold" style="color: var(--text-primary)">{toast.title}</p>
         {#if toast.message}
-          <p class="text-xs mt-0.5 break-words line-clamp-2" style="color: var(--text-secondary)">{toast.message}</p>
+          <p
+            class="text-xs mt-0.5 break-words"
+            class:line-clamp-2={!toast.multiline}
+            class:whitespace-pre-line={toast.multiline}
+            style="color: var(--text-secondary)"
+          >{toast.message}</p>
         {/if}
         {#if toast.action}
           <button

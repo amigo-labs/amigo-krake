@@ -42,7 +42,10 @@ export function listProblem(kind: "too_large" | "no_links", name?: string): stri
 export async function queueAndReport(list: LinkList): Promise<ImportResult> {
   const result = await queueLinkList(list, activeDownloads(), addBatch);
   const toast = resultToast(result, translator());
-  addToast(toast.type, toast.title, toast.message);
+  addToast(toast.type, toast.title, toast.message, {
+    multiline: toast.multiline,
+    ...(toast.sticky ? { duration: 0 } : {}),
+  });
   return result;
 }
 
