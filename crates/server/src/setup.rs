@@ -80,6 +80,9 @@ async fn complete(
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
     };
+    // Same queue as every other config write (spec `local-auth-bypass`,
+    // AC-11): a concurrent `PUT /config` is neither undone nor lost.
+    let change = app.config_lock.lock().await;
     let mut cfg = app.coordinator.config().await;
     cfg.server.admin_username = Some(req.username.trim().to_string());
     cfg.server.admin_password_hash = Some(hash);
@@ -89,6 +92,8 @@ async fn complete(
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
     app.coordinator.update_config(cfg.clone()).await;
+    app.config_epoch.send_modify(|epoch| *epoch += 1);
+    drop(change);
 
     // Issue a session cookie so the wizard can drop the user straight into
     // the app without a separate login round-trip.

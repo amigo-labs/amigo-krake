@@ -26,11 +26,12 @@ Element.prototype.animate = function () {
   return animation as unknown as Animation;
 };
 
-/** Let transitions end and Svelte apply what follows. */
-async function settle() {
-  flushSync();
-  await new Promise((resolve) => setTimeout(resolve, 5));
-  flushSync();
+/** Wait until the dialog is gone (its exit transition has ended). */
+async function dialogClosed() {
+  await vi.waitFor(() => {
+    flushSync();
+    expect(dialog()).toBeNull();
+  });
 }
 
 function setup(server: Record<string, unknown>) {
@@ -64,8 +65,7 @@ describe("choosing a mode (AC-15)", () => {
     expect(radio("always").checked).toBe(true);
 
     button("Cancel").click();
-    await settle();
-    expect(dialog()).toBeNull();
+    await dialogClosed();
     expect(onsave).not.toHaveBeenCalled();
     expect(config.server.auth_mode).toBe("always");
     expect(radio("always").checked).toBe(true);
@@ -76,10 +76,9 @@ describe("choosing a mode (AC-15)", () => {
     radio("never").click();
     flushSync();
     button("Allow").click();
-    await settle();
+    await dialogClosed();
     expect(onsave).toHaveBeenCalledTimes(1);
     expect(config.server.auth_mode).toBe("never");
-    expect(dialog()).toBeNull();
   });
 
   it("turns the login back on without asking", () => {

@@ -353,3 +353,10 @@ Terms used below:
   at once, because happy-dom's never does. The component now sets the
   radios back to the stored mode itself, because happy-dom, unlike
   browsers, does not restore them on `preventDefault`.
+- 2026-11-18 (spec-build, final check): Finishing the setup wizard now goes
+  through the same config lock and change counter as `PUT /config` and the
+  webhook writes, so every config write is serialized (AC-11) and open
+  sockets let in without a login check themselves after it (AC-08). The
+  AC-15 click test waits for the dialog to close (`vi.waitFor`) instead of a
+  fixed 5 ms, which was flaky under a loaded parallel run; the suite then
+  passed 12 runs in a row, half of them two at a time.
