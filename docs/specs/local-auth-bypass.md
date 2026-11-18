@@ -267,11 +267,11 @@ Terms used below:
 | AC-09 | `crates/server/tests/local_auth_tests.rs`::environment_mode_overrides_the_file_and_is_fixed, ::startup_refuses_unknown_modes_and_never_without_loopback | built |        |
 | AC-10 | `crates/server/tests/local_auth_tests.rs`::unknown_modes_are_refused_through_the_api, ::startup_refuses_unknown_modes_and_never_without_loopback | built |        |
 | AC-11 | `crates/server/tests/local_auth_tests.rs`::a_mode_change_applies_to_the_next_request, ::concurrent_changes_cannot_combine_into_a_refused_state | built |        |
-| AC-12 |      | open   |        |
-| AC-13 |      | open   |        |
-| AC-14 |      | open   |        |
-| AC-15 |      | open   |        |
-| AC-16 |      | open   |        |
+| AC-12 | `web-ui/test/security.test.ts` (boot: opens without login page; shows the login page on 401; a later 401 flips to login) + `crates/server/tests/local_auth_tests.rs::me_reports_the_mode_and_added_downloads_belong_to_no_one` | built |        |
+| AC-13 | `web-ui/test/security.test.ts` (securityView: mode in effect; environment) + browser check (Decisions) | built |        |
+| AC-14 | `web-ui/test/security.test.ts` (securityView: never only on a loopback bind; reads loopback binds) | built |        |
+| AC-15 | `web-ui/test/security.test.ts` (needsConfirmation) + browser check (Decisions) | built |        |
+| AC-16 | `web-ui/test/security.test.ts` (security strings) | built |        |
 | AC-17 |      | open   |        |
 
 ## Decisions
@@ -303,3 +303,14 @@ Terms used below:
   checked again after every `PUT /config` (a change counter in the app
   state), not only on mode changes, so switching off `trust_proxy` closes it
   too.
+- 2026-11-18 (spec-build): The decisions of Settings ▸ Security (mode in
+  effect, environment lock, `never` only on a loopback bind, which switches
+  ask first) and the boot decision live in `web-ui/src/lib/security.ts` and
+  `web-ui/src/lib/boot.ts` with unit tests; the component only renders them.
+  Checked once in a browser against a local server: the confirmation dialog
+  appears for "not from my network", the mode is saved, a browser without a
+  cookie opens the app directly, and after switching back to "always" it
+  gets the login page.
+- 2026-11-18 (spec-build): The radio buttons change only through the saved
+  config (the click is prevented and re-applied after confirmation), so a
+  cancelled confirmation leaves the current mode checked.

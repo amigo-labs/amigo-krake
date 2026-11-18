@@ -13,6 +13,7 @@
   import SettingsDownloads from "../components/settings/SettingsDownloads.svelte";
   import SettingsWebhooks from "../components/settings/SettingsWebhooks.svelte";
   import SettingsRssFeeds from "../components/settings/SettingsRssFeeds.svelte";
+  import SettingsSecurity from "../components/settings/SettingsSecurity.svelte";
   import SkeletonCard from "../components/SkeletonCard.svelte";
 
   let config = $state<AppConfig | null>(null);
@@ -52,6 +53,7 @@
   <SettingsAppearance />
   <SettingsDownloads {config} onsave={saveConfig} />
   <SettingsWebhooks bind:webhooks />
+  <SettingsSecurity {config} onsave={saveConfig} />
 
   <!-- Language -->
   <section>

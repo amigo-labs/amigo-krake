@@ -347,6 +347,14 @@ export interface AppConfig {
     rss_feeds: boolean;
     server_stats: boolean;
   };
+  server: {
+    bind: string;
+    /** Who must log in: always, private, never (spec local-auth-bypass). */
+    auth_mode?: string;
+    /** Set when KRAKE_AUTH_MODE fixes the mode. */
+    auth_mode_from_env?: boolean;
+    [key: string]: unknown;
+  };
   [key: string]: unknown;
 }
 

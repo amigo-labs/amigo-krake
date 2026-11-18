@@ -72,9 +72,9 @@
   // The palette on screen (dark or light), for the header's theme button.
   const palette = theme.palette;
   import { getSetupStatus, me } from "./lib/api";
+  import { detectBootState, type BootState } from "./lib/boot";
 
   // --- Auth / setup bootstrap gate ---------------------------------------
-  type BootState = "loading" | "setup" | "login" | "ready";
   let bootState = $state<BootState>("loading");
 
   // Flip to the right page whenever an API call reports 401/503.
@@ -85,22 +85,7 @@
     if (v) bootState = "login";
   });
 
-  async function detectBootState(): Promise<BootState> {
-    try {
-      const s = await getSetupStatus();
-      if (s.needs_setup) return "setup";
-    } catch {
-      // /setup/status is public; a failure here means the server is
-      // unreachable — show the login form so the user sees *something*.
-      return "login";
-    }
-    try {
-      await me();
-      return "ready";
-    } catch {
-      return "login";
-    }
-  }
+
 
   let showFeedback = $derived($showFeedbackDialog);
   let showShortcuts = $state(false);
@@ -140,7 +125,7 @@
   onMount(() => {
     // Gate: decide whether to show Setup / Login / ready before anything
     // else connects to the API.
-    detectBootState().then((s) => {
+    detectBootState(getSetupStatus, me).then((s) => {
       bootState = s;
     });
 
