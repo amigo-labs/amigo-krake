@@ -54,12 +54,14 @@
           "magnet"
         ]
       },
-      "mobile": {
-        "schemes": [
-          "krake",
-          "amigo"
-        ]
-      }
+      "mobile": [
+        {
+          "scheme": [
+            "krake",
+            "amigo"
+          ]
+        }
+      ]
     },
     "updater": {
       "active": false,
