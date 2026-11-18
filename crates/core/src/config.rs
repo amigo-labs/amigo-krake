@@ -138,6 +138,53 @@ pub struct ServerConfig {
     /// spoofing on directly-exposed servers.
     #[serde(default)]
     pub trust_proxy: bool,
+    /// Who must log in: `always` (default), `private` (not requests from
+    /// private networks), `never` (only with a loopback bind). Spec
+    /// `local-auth-bypass`; `KRAKE_AUTH_MODE` overrides it.
+    #[serde(default = "default_auth_mode")]
+    pub auth_mode: String,
+    /// Only in API responses: the mode in effect comes from
+    /// `KRAKE_AUTH_MODE`, so it cannot be changed through the API.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub auth_mode_from_env: bool,
+}
+
+fn default_auth_mode() -> String {
+    AuthMode::Always.as_str().into()
+}
+
+/// Who must log in (spec `local-auth-bypass`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthMode {
+    /// Every request needs a login.
+    Always,
+    /// Requests from private networks need none.
+    Private,
+    /// No request needs one; only allowed with a loopback bind.
+    Never,
+}
+
+impl AuthMode {
+    /// The values `server.auth_mode` and `KRAKE_AUTH_MODE` accept.
+    pub const ALLOWED: &'static str = "always, private, never";
+
+    /// Parse a mode, ignoring case and surrounding whitespace.
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "always" => Some(Self::Always),
+            "private" => Some(Self::Private),
+            "never" => Some(Self::Never),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Always => "always",
+            Self::Private => "private",
+            Self::Never => "never",
+        }
+    }
 }
 
 fn default_session_ttl_secs() -> i64 {
@@ -171,6 +218,8 @@ impl Default for ServerConfig {
             admin_password_hash: None,
             session_ttl_secs: default_session_ttl_secs(),
             trust_proxy: false,
+            auth_mode: default_auth_mode(),
+            auth_mode_from_env: false,
         }
     }
 }

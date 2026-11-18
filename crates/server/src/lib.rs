@@ -6,6 +6,7 @@ pub mod auth;
 pub mod background;
 pub mod clicknload;
 pub mod feedback;
+pub mod local_auth;
 pub mod login;
 pub mod net_guard;
 pub mod nzbget_api;
