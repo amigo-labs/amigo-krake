@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.8](https://github.com/amigo-labs/amigo-krake/compare/v0.1.7...v0.1.8) (2026-11-18)
+
+
+### Bug Fixes
+
+* **tauri:** give the deep-link plugin its mobile config as a list ([0b6d975](https://github.com/amigo-labs/amigo-krake/commit/0b6d97522ef0d05961fa192c213e58544e38ff99))
+* **tauri:** unbreak the release build (deep-link config, Windows plugin guest) ([8bae37a](https://github.com/amigo-labs/amigo-krake/commit/8bae37a3610d9eeaecb052a92e143e981bda4e2d))
+
 ## [0.1.7](https://github.com/amigo-labs/amigo-krake/compare/v0.1.6...v0.1.7) (2026-11-18)
 
 
