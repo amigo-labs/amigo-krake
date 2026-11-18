@@ -272,7 +272,7 @@ Terms used below:
 | AC-14 | `web-ui/test/security.test.ts` (securityView: never only on a loopback bind; reads loopback binds) | built |        |
 | AC-15 | `web-ui/test/security.test.ts` (needsConfirmation) + browser check (Decisions) | built |        |
 | AC-16 | `web-ui/test/security.test.ts` (security strings) | built |        |
-| AC-17 |      | open   |        |
+| AC-17 | `crates/server/tests/local_auth_tests.rs::hosting_docs_describe_the_modes_and_their_limits` (docs/hosting.md, "Login for your own network") | built |        |
 
 ## Decisions
 

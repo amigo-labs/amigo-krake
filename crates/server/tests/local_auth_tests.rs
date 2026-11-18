@@ -509,3 +509,32 @@ fn startup_refuses_unknown_modes_and_never_without_loopback() {
     );
     assert_eq!(krake_server::resolve_auth_mode(&config, None), Ok(None));
 }
+
+// ---- Docs ----
+
+#[test]
+fn hosting_docs_describe_the_modes_and_their_limits() {
+    // AC-17
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/hosting.md");
+    let docs = std::fs::read_to_string(path).unwrap();
+    for needle in [
+        "KRAKE_AUTH_MODE",
+        "`always`",
+        "`private`",
+        "`never`",
+        "KRAKE_TRUST_PROXY",
+        "chain",
+        "public domain",
+        "IPv6",
+        "Docker Desktop",
+        "rootless Docker or Podman",
+        "userland proxy",
+        "SSH",
+        "keep `always`",
+    ] {
+        assert!(
+            docs.contains(needle),
+            "docs/hosting.md must mention {needle:?}"
+        );
+    }
+}
