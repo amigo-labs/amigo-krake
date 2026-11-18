@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.6](https://github.com/amigo-labs/amigo-krake/compare/v0.1.5...v0.1.6) (2026-11-18)
+
+
+### Bug Fixes
+
+* **core:** keep chunks of same-name downloads apart and remove them on delete ([9aa3056](https://github.com/amigo-labs/amigo-krake/commit/9aa3056637b277fd9b859703105099cbcaa5435f))
+* **core:** keep chunks of same-name downloads apart and remove them on delete ([fffbf1e](https://github.com/amigo-labs/amigo-krake/commit/fffbf1e2741c70fd4430e9123111e584a8d596ed))
+
 ## [0.1.5](https://github.com/amigo-labs/amigo-krake/compare/v0.1.4...v0.1.5) (2026-11-17)
 
 
