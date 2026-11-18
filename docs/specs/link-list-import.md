@@ -241,11 +241,11 @@ Terms used below:
 | AC-15 |      | dropped |        |
 | AC-16 |      | dropped |        |
 | AC-17 |      | dropped |        |
-| AC-18 |      | open   |        |
-| AC-19 |      | open   |        |
-| AC-20 |      | open   |        |
-| AC-21 |      | open   |        |
-| AC-22 |      | open   |        |
+| AC-18 | `crates/cli/src/main.rs::link_list_tests::add_link_list_queues_in_order_and_counts`, `::add_link_list_counts_active_downloads_as_already_queued` | built |        |
+| AC-19 | `crates/cli/tests/add_list.rs::list_from_stdin_is_queued` | built |        |
+| AC-20 | `crates/cli/src/main.rs::link_list_tests::read_link_list_names_path_and_reason`, `::read_link_list_refuses_more_than_one_mib`, `crates/cli/tests/add_list.rs::missing_file_fails_with_path`, `::oversized_stdin_is_refused` | built |        |
+| AC-21 | `crates/cli/tests/add_list.rs::list_without_links_fails`, `::every_link_rejected_fails`, `::list_from_stdin_is_queued` | built |        |
+| AC-22 | `crates/cli/src/main.rs::link_list_tests::list_conflicts_with_url_nzb_and_dlc` | built |        |
 
 ## Decisions
 
@@ -258,3 +258,9 @@ Terms used below:
   folder — chosen by the user.
 - 2026-11-17: Revision — Android share target (AC-13 to AC-17) dropped by
   the user; Android needs an HTTPS-installed PWA for it.
+- 2026-11-18 (spec-build): The CLI rejects a link that `reqwest::Url` cannot
+  parse (for example `http://[bad/x`) before queueing it, because the local
+  coordinator accepts any string and AC-21 needs a reachable "rejected" case.
+- 2026-11-18 (spec-build): AC-22's test was green as soon as the clap
+  `conflicts_with_all` rule existed; the rule and the test arrived in the same
+  step, so there was no separate red run for it.

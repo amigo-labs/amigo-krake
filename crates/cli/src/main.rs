@@ -80,7 +80,7 @@ enum Commands {
         #[arg(short, long, default_value_t = 0)]
         chunks: u32,
     },
-    /// Add a download to the queue (URL, NZB, or DLC)
+    /// Add a download to the queue (URL, NZB, DLC, or a link list)
     Add {
         /// URL to download
         url: Option<String>,
@@ -90,6 +90,9 @@ enum Commands {
         /// Import DLC container
         #[arg(long)]
         dlc: Option<String>,
+        /// Queue every link of a text file, one link per line (`-` reads stdin)
+        #[arg(long, value_name = "FILE", conflicts_with_all = ["url", "nzb", "dlc"])]
+        list: Option<String>,
     },
     /// Export downloads as DLC container
     ExportDlc {
@@ -423,6 +426,84 @@ fn init_coordinator() -> anyhow::Result<Arc<Coordinator>> {
         PathBuf::from(&config.temp_dir),
     )?;
     Ok(Arc::new(Coordinator::new(config, storage)))
+}
+
+/// Largest link list `krake add --list` reads (spec `link-list-import`, AC-20).
+const MAX_LINK_LIST_BYTES: u64 = 1024 * 1024;
+
+/// Read a link list from a file, or from standard input for `-`. Errors name
+/// the path and the reason.
+fn read_link_list(path: &str) -> anyhow::Result<Vec<u8>> {
+    use std::io::Read;
+    let source: Box<dyn Read> = if path == "-" {
+        Box::new(std::io::stdin().lock())
+    } else {
+        Box::new(std::fs::File::open(path).map_err(|e| anyhow::anyhow!("{path}: {e}"))?)
+    };
+    let mut data = Vec::new();
+    source
+        .take(MAX_LINK_LIST_BYTES + 1)
+        .read_to_end(&mut data)
+        .map_err(|e| anyhow::anyhow!("{path}: {e}"))?;
+    if data.len() as u64 > MAX_LINK_LIST_BYTES {
+        anyhow::bail!("{path}: larger than 1 MiB, the limit for a link list");
+    }
+    Ok(data)
+}
+
+/// Result counts of one `krake add --list` run.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct LinkListSummary {
+    queued: usize,
+    already_queued: usize,
+    rejected: usize,
+    not_recognized: usize,
+}
+
+/// Queue the links of a parsed link list on the local coordinator, printing
+/// one line per link and a summary.
+async fn add_link_list(
+    coord: &Coordinator,
+    list: &krake_core::linklist::LinkList,
+    out: &mut impl std::io::Write,
+) -> anyhow::Result<LinkListSummary> {
+    let mut summary = LinkListSummary {
+        not_recognized: list.not_recognized,
+        ..LinkListSummary::default()
+    };
+    for link in &list.links {
+        if let Err(e) = reqwest::Url::parse(link) {
+            writeln!(out, "  Rejected: {link}: {e}")?;
+            summary.rejected += 1;
+            continue;
+        }
+        if coord
+            .storage()
+            .find_active_download_by_url(link)
+            .await?
+            .is_some()
+        {
+            writeln!(out, "  Already queued: {link}")?;
+            summary.already_queued += 1;
+            continue;
+        }
+        match coord.add_download(link, None).await {
+            Ok(id) => {
+                writeln!(out, "  Queued: {link} → {id}")?;
+                summary.queued += 1;
+            }
+            Err(e) => {
+                writeln!(out, "  Rejected: {link}: {e}")?;
+                summary.rejected += 1;
+            }
+        }
+    }
+    writeln!(
+        out,
+        "Link list: queued {}, already queued {}, rejected {}, not recognized {}",
+        summary.queued, summary.already_queued, summary.rejected, summary.not_recognized
+    )?;
+    Ok(summary)
 }
 
 /// Format bytes as human-readable string.
@@ -857,7 +938,28 @@ async fn main() -> anyhow::Result<()> {
             run_direct_downloads(&urls, &output, chunks, &tui).await?;
         }
 
-        Commands::Add { url, nzb, dlc } => {
+        Commands::Add {
+            url,
+            nzb,
+            dlc,
+            list,
+        } => {
+            if let Some(path) = list {
+                let list = krake_core::linklist::parse(&read_link_list(&path)?);
+                if list.links.is_empty() {
+                    eprintln!(
+                        "{path}: contains no links ({} lines not recognized)",
+                        list.not_recognized
+                    );
+                    std::process::exit(1);
+                }
+                let coord = init_coordinator()?;
+                let summary = add_link_list(&coord, &list, &mut std::io::stdout()).await?;
+                if summary.queued + summary.already_queued == 0 {
+                    std::process::exit(1);
+                }
+                return Ok(());
+            }
             let coord = init_coordinator()?;
             if let Some(url) = url {
                 let id = coord.add_download(&url, None).await?;
@@ -1547,4 +1649,120 @@ fn alias_from_url(url: &str) -> String {
         .trim_start_matches("http://")
         .trim_start_matches("https://");
     s.split(&['/', ':'][..]).next().unwrap_or(s).to_string()
+}
+
+#[cfg(test)]
+mod link_list_tests {
+    use super::*;
+
+    fn memory_coordinator() -> Arc<Coordinator> {
+        let tmp = std::env::temp_dir().join(format!("krake-cli-test-{}", std::process::id()));
+        let mut storage = Storage::open_memory().expect("in-memory storage");
+        storage.download_dir = tmp.clone();
+        storage.temp_dir = tmp.join(".tmp");
+        Arc::new(Coordinator::new(Config::default(), storage))
+    }
+
+    #[tokio::test]
+    async fn add_link_list_queues_in_order_and_counts() {
+        // AC-02, AC-18: links are queued in list order, one line per link,
+        // and the summary carries every result count.
+        let coord = memory_coordinator();
+        let list = krake_core::linklist::parse(
+            b"https://host.example/a.rar note\nnot a link\nhttp://[bad/x\nhttps://host.example/b.rar\n",
+        );
+        let mut out = Vec::new();
+        let summary = add_link_list(&coord, &list, &mut out).await.unwrap();
+        assert_eq!(
+            summary,
+            LinkListSummary {
+                queued: 2,
+                already_queued: 0,
+                rejected: 1,
+                not_recognized: 1,
+            }
+        );
+        let urls: Vec<String> = coord
+            .storage()
+            .list_downloads()
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|d| d.url)
+            .collect();
+        assert_eq!(urls.len(), 2);
+        assert!(urls.contains(&"https://host.example/a.rar".to_string()));
+        let text = String::from_utf8(out).unwrap();
+        let a = text.find("https://host.example/a.rar").expect("a printed");
+        let b = text.find("https://host.example/b.rar").expect("b printed");
+        assert!(a < b, "links must be printed in list order:\n{text}");
+        assert!(
+            text.contains("http://[bad/x"),
+            "rejected link must be named:\n{text}"
+        );
+        assert!(
+            text.contains("queued 2")
+                && text.contains("rejected 1")
+                && text.contains("not recognized 1"),
+            "summary missing:\n{text}"
+        );
+    }
+
+    #[tokio::test]
+    async fn add_link_list_counts_active_downloads_as_already_queued() {
+        // AC-18: a link equal to an active download creates no download.
+        let coord = memory_coordinator();
+        let id = coord
+            .add_download("https://host.example/a.rar", None)
+            .await
+            .unwrap();
+        coord.pause(&id).await.unwrap();
+        let list = krake_core::linklist::parse(b"https://host.example/a.rar\n");
+        let summary = add_link_list(&coord, &list, &mut Vec::new()).await.unwrap();
+        assert_eq!(summary.already_queued, 1);
+        assert_eq!(summary.queued, 0);
+        assert_eq!(coord.storage().list_downloads().await.unwrap().len(), 1);
+    }
+
+    #[test]
+    fn read_link_list_names_path_and_reason() {
+        // AC-20: a missing file is reported with its path and the reason.
+        let err = read_link_list("/nonexistent/links.txt")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("/nonexistent/links.txt"), "{err}");
+    }
+
+    #[test]
+    fn read_link_list_refuses_more_than_one_mib() {
+        // AC-20: lists over 1 MiB are refused.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("big.txt");
+        std::fs::write(&path, vec![b'a'; 1024 * 1024 + 1]).unwrap();
+        let err = read_link_list(path.to_str().unwrap())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("1 MiB"), "{err}");
+    }
+
+    #[test]
+    fn list_conflicts_with_url_nzb_and_dlc() {
+        // AC-22: --list cannot be combined with another input.
+        for extra in [
+            vec!["https://host.example/x"],
+            vec!["--nzb", "a.nzb"],
+            vec!["--dlc", "a.dlc"],
+        ] {
+            let mut args = vec!["krake", "add", "--list", "links.txt"];
+            args.extend(extra.iter().copied());
+            let Err(err) = Cli::try_parse_from(&args) else {
+                panic!("{args:?} must be refused");
+            };
+            assert_eq!(
+                err.kind(),
+                clap::error::ErrorKind::ArgumentConflict,
+                "{args:?}"
+            );
+        }
+    }
 }

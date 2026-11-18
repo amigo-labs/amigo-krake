@@ -588,6 +588,7 @@ krake get <URL> -o ./downloads --chunks 8
 krake add <URL>                          # queue a URL
 krake add --nzb <file.nzb>               # import NZB
 krake add --dlc <file.dlc>               # import DLC container
+krake add --list <file.txt>              # queue every link of a text file (`-` = stdin)
 krake export-dlc [--ids <id1,id2,...>]   # export DLC container
 krake list / pause <id> / resume <id> / cancel <id>
 krake queue / status / speed
