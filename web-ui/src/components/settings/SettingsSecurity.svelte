@@ -22,6 +22,12 @@
   // leaves the current mode checked.
   function choose(e: Event, mode: AuthMode) {
     e.preventDefault();
+    // Keep every radio on the stored mode until a change is saved; not every
+    // engine restores them on `preventDefault`.
+    const group = (e.currentTarget as HTMLElement).closest("fieldset");
+    for (const input of group?.querySelectorAll<HTMLInputElement>('input[name="auth-mode"]') ?? []) {
+      input.checked = input.value === view.mode;
+    }
     const choice = chooseMode(view, mode);
     if (choice.kind === "confirm") pending = choice.mode;
     else if (choice.kind === "apply") apply(choice.mode);

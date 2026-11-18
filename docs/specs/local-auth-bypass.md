@@ -270,7 +270,7 @@ Terms used below:
 | AC-12 | `web-ui/test/security.test.ts` (boot: opens without login page; shows the login page on 401; a later 401 flips to login) + `crates/server/tests/local_auth_tests.rs::me_reports_the_mode_and_added_downloads_belong_to_no_one` | built |        |
 | AC-13 | `web-ui/test/security.test.ts` (securityView: mode in effect; environment) + browser check (Decisions) + `web-ui/test/settingsSecurity.test.ts` (shows the three modes with explanations, the current mode and the warning; renders in German too) + `web-ui/test/saveConfig.test.ts` (the page shows only what the server stored) | built |        |
 | AC-14 | `web-ui/test/security.test.ts` (securityView: never only on a loopback bind; reads loopback binds) + `web-ui/test/settingsSecurity.test.ts` (never needs a loopback bind) + `crates/core/src/config.rs::loopback_binds_are_any_loopback_literal_or_localhost` | built |        |
-| AC-15 | `web-ui/test/security.test.ts` (needsConfirmation) + browser check (Decisions) + `web-ui/test/settingsSecurity.test.ts` (chooseMode) | built |        |
+| AC-15 | `web-ui/test/security.test.ts` (needsConfirmation) + browser check (Decisions) + `web-ui/test/settingsSecurity.test.ts` (chooseMode) + `web-ui/test/settingsSecurity.dom.test.ts` (asks first and changes nothing on cancel; saves once allowed; turns the login back on without asking) | built |        |
 | AC-16 | `web-ui/test/security.test.ts` (security strings) | built |        |
 | AC-17 | `crates/server/tests/local_auth_tests.rs::hosting_docs_describe_the_modes_and_their_limits` (docs/hosting.md, "Login for your own network") | built |        |
 
@@ -345,3 +345,11 @@ Terms used below:
   login-free access can approve pairing devices, which keep their tokens
   after a switch back to `always`; the start error names `KRAKE_AUTH_MODE`
   when the environment set `never`.
+- 2026-11-18 (spec-build, check round 3): AC-15 is proven by mounting the
+  component in `happy-dom` and clicking it. `happy-dom` is a new dev
+  dependency of `web-ui`, approved by the user on 2026-11-18 (stopping
+  point "new dependency"). The vitest config resolves Svelte's browser
+  runtime; the test replaces the Web Animations API with one that finishes
+  at once, because happy-dom's never does. The component now sets the
+  radios back to the stored mode itself, because happy-dom, unlike
+  browsers, does not restore them on `preventDefault`.
