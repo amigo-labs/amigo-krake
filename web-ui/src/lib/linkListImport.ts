@@ -223,3 +223,21 @@ export function chooseTextFile(
   }
   return { urlInput: current, fileSkipped: 0, problem: problemMessage(prepared.kind, name, t) };
 }
+
+/** Whether a drag that carries text is imported: plain text from outside
+ * the app (not files, not a queue reorder), not dropped on a text field
+ * (AC-07). */
+export function shouldImportTextDrop(
+  types: readonly string[],
+  drag: { files: boolean; internal: boolean },
+  target: unknown,
+): boolean {
+  return types.includes("text/plain") && !drag.files && !drag.internal && !inTextField(target);
+}
+
+/** The text of a paste to import, or `null` when the paste belongs to a
+ * field or carries no text (AC-07). */
+export function pastedText(text: string | undefined, target: unknown, activeElement: unknown): string | null {
+  if (!text || !shouldImportPaste(target, activeElement)) return null;
+  return text;
+}

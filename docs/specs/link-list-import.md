@@ -228,12 +228,12 @@ Terms used below:
 | AC-02 | `crates/core/tests/link_list_fixtures.rs::link_list_fixtures`, `web-ui/test/linkList.test.ts` | built |        |
 | AC-03 | `crates/core/tests/link_list_fixtures.rs::link_list_fixtures`, `web-ui/test/linkList.test.ts` | built |        |
 | AC-04 | `crates/core/tests/link_list_fixtures.rs::link_list_fixtures`, `web-ui/test/linkList.test.ts` | built |        |
-| AC-05 | `web-ui/test/linkListImport.test.ts` (queueLinkList: active downloads not sent; resultToast: zero counts left out; component wiring (AC-05, AC-06, AC-07, AC-09, AC-10): routes dropped files) | built |        |
+| AC-05 | `web-ui/test/linkListImport.test.ts` (queueLinkList: active downloads not sent; resultToast: zero counts left out; component wiring (AC-05, AC-06, AC-07, AC-09, AC-10): routes dropped files) + `web-ui/test/linkListActions.test.ts` (activeDownloads; importLinkList; importLinkListFile) | built |        |
 | AC-06 | `web-ui/test/linkListImport.test.ts` (component wiring (AC-05, AC-06, AC-07, AC-09, AC-10): fills the field / keeps the field and names the problem) | built |        |
-| AC-07 | `web-ui/test/linkList.test.ts` + `web-ui/test/linkListImport.test.ts` (component wiring (AC-05, AC-06, AC-07, AC-09, AC-10): leaves drops and pastes into text fields alone) | built |        |
+| AC-07 | `web-ui/test/linkList.test.ts` + `web-ui/test/linkListImport.test.ts` (component wiring (AC-05, AC-06, AC-07, AC-09, AC-10): leaves drops and pastes into text fields alone) + `web-ui/test/linkListActions.test.ts` (text drops and pastes) | built |        |
 | AC-08 | `web-ui/test/linkListImport.test.ts` (keeps the other links when some are rejected; first five, then and N more) | built |        |
-| AC-09 | `web-ui/test/linkListImport.test.ts` (reports a list without links; component wiring (AC-05, AC-06, AC-07, AC-09, AC-10): no-links message) | built |        |
-| AC-10 | `web-ui/test/linkListImport.test.ts` (refuses more than 1 MiB, UTF-8 bytes, file size; component wiring (AC-05, AC-06, AC-07, AC-09, AC-10): names the limit) | built |        |
+| AC-09 | `web-ui/test/linkListImport.test.ts` (reports a list without links; component wiring (AC-05, AC-06, AC-07, AC-09, AC-10): no-links message) + `web-ui/test/linkListActions.test.ts` (sends nothing and says so for a list without links) | built |        |
+| AC-10 | `web-ui/test/linkListImport.test.ts` (refuses more than 1 MiB, UTF-8 bytes, file size; component wiring (AC-05, AC-06, AC-07, AC-09, AC-10): names the limit) + `web-ui/test/linkListActions.test.ts` (names the limit; refuses a file over 1 MiB without reading it) | built |        |
 | AC-11 | `web-ui/test/linkListImport.test.ts` (several requests, body limit, stops at a failed request) | built |        |
 | AC-12 | `web-ui/test/linkListImport.test.ts` (link list strings) + `web-ui/test/i18nKeys.test.ts` + `crates/cli/src/main.rs::link_list_tests::link_list_keys_exist_in_english_and_german` + `crates/cli/tests/add_list.rs::messages_follow_the_system_language` | built |        |
 | AC-13 |      | dropped |        |
@@ -287,3 +287,9 @@ Terms used below:
   embeds both locale files (it read `./locales` from the working directory,
   which exists only inside the repository, so it showed raw keys elsewhere).
   `docker/Dockerfile` copies `locales/` into the Rust build stage for that.
+- 2026-11-18 (spec-build, round 3): The glue between the stores, the API and
+  the toasts (`linkListActions.ts`) is tested with vitest mocks of the API and
+  the toasts; the text-drop and paste decisions moved into
+  `shouldImportTextDrop` / `pastedText`. The glue tests were green at once
+  because the glue already existed; removing the active-status filter turns
+  two of them red, so they guard it.

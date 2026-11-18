@@ -116,7 +116,10 @@
     <div role="tabpanel" id="add-panel-url" aria-labelledby="add-tab-url" tabindex="0" class="space-y-4 outline-none">
     <textarea
       bind:value={urlInput}
-      oninput={() => (fileSkipped = 0)}
+      oninput={() => {
+        fileSkipped = 0;
+        fileProblem = null;
+      }}
       onkeydown={handleKeydown}
       placeholder={tr($locale, "add.placeholder")}
       rows="6"

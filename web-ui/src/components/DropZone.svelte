@@ -4,18 +4,15 @@
   import { locale, tr } from "../lib/i18n";
   import { isFileDrag, isInternalDrag } from "../lib/dnd";
   import { importLinkList, importLinkListFile } from "../lib/linkListActions";
-  import { inTextField, routeDroppedFile, shouldImportPaste } from "../lib/linkListImport";
+  import { pastedText, routeDroppedFile, shouldImportTextDrop } from "../lib/linkListImport";
 
   // Text dropped or pasted into a field belongs to that field: the browser
   // inserts it and the add panel queues it on submit (AC-07).
   function isTextDrag(e: DragEvent): boolean {
-    const types = e.dataTransfer?.types;
-    return (
-      !!types &&
-      Array.prototype.includes.call(types, "text/plain") &&
-      !isFileDrag(e) &&
-      !isInternalDrag(e) &&
-      !inTextField(e.target)
+    return shouldImportTextDrop(
+      Array.from(e.dataTransfer?.types ?? []),
+      { files: isFileDrag(e), internal: isInternalDrag(e) },
+      e.target,
     );
   }
 
@@ -83,9 +80,8 @@
 
   // Pasting text while no field has focus queues its links (AC-07).
   async function handlePaste(e: ClipboardEvent) {
-    if (!shouldImportPaste(e.target, document.activeElement)) return;
-    const text = e.clipboardData?.getData("text/plain");
-    if (!text) return;
+    const text = pastedText(e.clipboardData?.getData("text/plain"), e.target, document.activeElement);
+    if (text === null) return;
     e.preventDefault();
     await importLinkList(text);
   }
