@@ -538,3 +538,137 @@ async fn test_pause_keeps_the_progress_made_so_far() {
     );
     assert_eq!(row.speed_current, 0, "a paused download has no speed");
 }
+
+/// Serve `body` at `http://<addr>/<dir>/same.bin` with byte-range support.
+/// With `stall_after = Some(n)` every ranged GET sends only the first `n`
+/// bytes of its range and then hangs, so the chunks stay partial on disk.
+async fn range_server(dir: &'static str, body: Vec<u8>, stall_after: Option<usize>) -> String {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let body = Arc::new(body);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut socket, _)) = listener.accept().await else {
+                return;
+            };
+            let body = body.clone();
+            tokio::spawn(async move {
+                let mut request = vec![0u8; 4096];
+                let n = socket.read(&mut request).await.unwrap_or(0);
+                let request = String::from_utf8_lossy(&request[..n]).to_string();
+                let total = body.len();
+                if request.starts_with("HEAD") {
+                    let headers = format!(
+                        "HTTP/1.1 200 OK\r\ncontent-type: application/octet-stream\r\n\
+                         content-length: {total}\r\naccept-ranges: bytes\r\n\r\n"
+                    );
+                    let _ = socket.write_all(headers.as_bytes()).await;
+                    return;
+                }
+                let range = request.lines().find_map(|l| {
+                    let (name, value) = l.split_once(':')?;
+                    if !name.eq_ignore_ascii_case("range") {
+                        return None;
+                    }
+                    let (a, b) = value.trim().strip_prefix("bytes=")?.split_once('-')?;
+                    let start: usize = a.parse().ok()?;
+                    let end: usize = b.parse().ok().unwrap_or(total - 1);
+                    Some((start, end.min(total - 1)))
+                });
+                let (start, end) = range.unwrap_or((0, total - 1));
+                let len = end - start + 1;
+                let headers = format!(
+                    "HTTP/1.1 206 Partial Content\r\ncontent-type: application/octet-stream\r\n\
+                     content-length: {len}\r\ncontent-range: bytes {start}-{end}/{total}\r\n\r\n"
+                );
+                let _ = socket.write_all(headers.as_bytes()).await;
+                let send = stall_after.map_or(len, |n| n.min(len));
+                let _ = socket.write_all(&body[start..start + send]).await;
+                let _ = socket.flush().await;
+                if send < len {
+                    tokio::time::sleep(Duration::from_secs(30)).await;
+                }
+            });
+        }
+    });
+    format!("http://{addr}/{dir}/same.bin")
+}
+
+/// Start a chunked download that stalls, wait until it has bytes on disk,
+/// then pause it so its partial chunks stay in the temp directory.
+async fn paused_partial_download(coord: &Coordinator) -> String {
+    // More than the 256 KiB write buffer per chunk, so bytes reach the disk.
+    let url = range_server("a", vec![0xAA; 4 * 1024 * 1024], Some(384 * 1024)).await;
+    let id = coord.add_download(&url, None).await.expect("add_download");
+    let mut seen = 0;
+    for _ in 0..100 {
+        seen = coord
+            .get_progress(&id)
+            .await
+            .map_or(0, |p| p.bytes_downloaded);
+        if seen > 0 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(seen > 0, "the stalled transfer never reported progress");
+    coord.pause(&id).await.expect("pause");
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    id
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_same_filename_downloads_do_not_share_chunks() {
+    // Regression: chunk files lived in `<temp_dir>/<filename>/`, so a second
+    // download with the same file name resumed from the first one's partial
+    // chunks and produced a file mixing both bodies.
+    let (_tmp, coord) = lifecycle_coordinator();
+    paused_partial_download(&coord).await;
+
+    let body: Vec<u8> = (0..4 * 1024 * 1024).map(|i| (i % 251) as u8).collect();
+    let url = range_server("b", body.clone(), None).await;
+    let rx = coord.subscribe();
+    let id = coord.add_download(&url, None).await.expect("add_download");
+    assert_eq!(
+        wait_for_terminal(rx, &id).await,
+        Some(true),
+        "second download must complete"
+    );
+
+    let got = read_completed_file(&coord, &id).await;
+    assert_eq!(got.len(), body.len(), "completed file has the wrong size");
+    assert!(
+        got == body,
+        "completed file contains bytes of the other download"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_cancel_removes_temp_chunks() {
+    // Regression: deleting a paused chunked download removed its row but left
+    // its partial chunk files in the temp directory for good.
+    let (_tmp, coord) = lifecycle_coordinator();
+    let id = paused_partial_download(&coord).await;
+    let temp_dir = coord.storage().temp_dir.clone();
+    assert!(
+        std::fs::read_dir(&temp_dir).unwrap().next().is_some(),
+        "the paused download should have left partial chunks to clean up"
+    );
+
+    coord.cancel(&id).await.expect("cancel");
+
+    let mut left: Vec<PathBuf> = Vec::new();
+    for _ in 0..40 {
+        left = std::fs::read_dir(&temp_dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.path())
+            .collect();
+        if left.is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(left.is_empty(), "temp files left after cancel: {left:?}");
+}
