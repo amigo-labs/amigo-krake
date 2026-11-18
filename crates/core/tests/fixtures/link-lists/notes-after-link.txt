@@ -1,0 +1,2 @@
+https://host/a.rar  Part 1
+https://host/b.rar	Part 2
