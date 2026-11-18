@@ -11,6 +11,7 @@ notes for Krake. The workflow is in `AGENTS.md`, "Spec-driven workflow".
 | 2 | [desktop-app](desktop-app.md) | todo | — (three PRs: P1 embedded server, P2 tray, P3 updater, release and update choice) |
 | 3 | [plugin-registry](plugin-registry.md) | todo | — (org setup: Cloudflare Pages project on branch `registry`, DNS) |
 | 4 | [link-list-import](link-list-import.md) | todo | — |
+| 5 | [local-auth-bypass](local-auth-bypass.md) | todo | — |
 
 ## Done
 
