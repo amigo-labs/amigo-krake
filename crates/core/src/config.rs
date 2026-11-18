@@ -144,8 +144,13 @@ pub struct ServerConfig {
     #[serde(default = "default_auth_mode")]
     pub auth_mode: String,
     /// Only in API responses: the mode in effect comes from
-    /// `KRAKE_AUTH_MODE`, so it cannot be changed through the API.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    /// `KRAKE_AUTH_MODE`, so it cannot be changed through the API. Never
+    /// read from a file or a request.
+    #[serde(
+        default,
+        skip_deserializing,
+        skip_serializing_if = "std::ops::Not::not"
+    )]
     pub auth_mode_from_env: bool,
 }
 
@@ -556,6 +561,17 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn auth_mode_from_env_is_never_read_from_the_file() {
+        // Spec local-auth-bypass, AC-09: only the server sets it.
+        let server: ServerConfig = toml::from_str(
+            "bind = \"0.0.0.0:1516\"\nauth_mode = \"always\"\nauth_mode_from_env = true\n",
+        )
+        .unwrap();
+        assert_eq!(server.auth_mode, "always");
+        assert!(!server.auth_mode_from_env);
+    }
 
     #[test]
     fn loopback_binds_are_any_loopback_literal_or_localhost() {

@@ -140,8 +140,9 @@ Things to know before you choose `private`:
 - **Forwarders that hide the client.** Docker Desktop (macOS, Windows),
   rootless Docker or Podman, Docker's userland proxy, SSH or `socat`
   tunnels and tunnel daemons hand Krake connections from a private address
-  without saying where they came from. Behind any of them an internet
-  request looks local: keep `always` there.
+  without saying where they came from. So does a reverse proxy that sets no
+  `X-Forwarded-For` and passes a local `Host` such as `127.0.0.1:1516`.
+  Behind any of them an internet request looks local: keep `always` there.
 - **Docker networks and VPNs** are private ranges: other containers and
   VPN peers get in without a login.
 

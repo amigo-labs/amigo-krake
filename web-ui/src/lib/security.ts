@@ -23,8 +23,22 @@ export interface SecurityView {
 /** Whether a bind address only accepts connections from this machine. */
 export function isLoopbackBind(bind: string): boolean {
   const host = bind.startsWith("[") ? bind.slice(1, bind.indexOf("]")) : bind.replace(/:\d+$/, "");
-  // Same rule as the server's `ServerConfig::is_bind_loopback`.
-  return host.toLowerCase() === "localhost" || host === "::1" || /^127\.\d+\.\d+\.\d+$/.test(host);
+  // Same rule as the server's `ServerConfig::is_bind_loopback`: any
+  // loopback IP literal, or `localhost`.
+  return host.toLowerCase() === "localhost" || /^127\.\d+\.\d+\.\d+$/.test(host) || isIpv6Loopback(host);
+}
+
+/** `::1` in any spelling (`0:0:0:0:0:0:0:1`, `0::1`, …). */
+function isIpv6Loopback(host: string): boolean {
+  const halves = host.split("::");
+  if (halves.length > 2) return false;
+  const left = halves[0] ? halves[0].split(":") : [];
+  const right = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
+  const fill = halves.length === 2 ? 8 - left.length - right.length : 0;
+  if (fill < 0 || (halves.length === 2 && fill < 1)) return false;
+  const groups = [...left, ...Array<string>(fill).fill("0"), ...right];
+  if (groups.length !== 8 || !groups.every((g) => /^[0-9a-f]{1,4}$/i.test(g))) return false;
+  return groups.slice(0, 7).every((g) => parseInt(g, 16) === 0) && parseInt(groups[7], 16) === 1;
 }
 
 export function securityView(server: ServerSettings): SecurityView {

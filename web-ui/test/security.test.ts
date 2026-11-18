@@ -22,7 +22,7 @@ describe("securityView (AC-13, AC-14)", () => {
   });
 
   it("reads loopback binds", () => {
-    for (const b of ["127.0.0.1:1516", "localhost:1516", "[::1]:1516", "127.0.0.5:80"]) {
+    for (const b of ["127.0.0.1:1516", "localhost:1516", "[::1]:1516", "127.0.0.5:80", "[0:0:0:0:0:0:0:1]:1516", "[0::1]:1"]) {
       expect(isLoopbackBind(b), b).toBe(true);
     }
     for (const b of ["0.0.0.0:1516", "[::]:1516", "192.168.1.10:1516", "krake.lan:1516"]) {
