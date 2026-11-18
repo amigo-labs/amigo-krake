@@ -772,6 +772,12 @@ impl Coordinator {
         }
         drop(active);
         self.storage.delete_download(id).await?;
+        // Partial chunks and segments of a removed download are never
+        // resumed again; leaving them would keep their bytes on disk for good.
+        for prefix in ["http", "hls", "dash"] {
+            let dir = self.storage.temp_dir.join(format!("{prefix}-{id}"));
+            let _ = tokio::fs::remove_dir_all(dir).await;
+        }
         let _ = self
             .event_tx
             .send(DownloadEvent::Removed { id: id.to_string() });

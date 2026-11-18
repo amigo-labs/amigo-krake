@@ -806,7 +806,9 @@ impl super::ProtocolBackend for HttpDownloader {
         if use_chunked {
             let total = head.content_length.unwrap();
             let chunks = job.max_chunks.min((total / (512 * 1024)).max(1) as u32);
-            let chunk_dir = job.temp_dir.join(&fname);
+            // Keyed by download id, not file name: two downloads of the same
+            // name must never resume from each other's chunks.
+            let chunk_dir = job.temp_dir.join(format!("http-{}", job.download_id));
             tokio::fs::create_dir_all(&chunk_dir).await?;
 
             let chunked = tokio::select! {
