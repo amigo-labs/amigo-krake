@@ -116,33 +116,38 @@ fn is_forwarded(headers: &HeaderMap) -> bool {
 }
 
 /// The forwarded address list: every `X-Forwarded-For` line as one list,
-/// else the `for=` entries of `Forwarded`.
-fn forwarded_list(headers: &HeaderMap) -> Vec<String> {
-    let lines = |name| {
-        headers
+/// else the `for=` entries of `Forwarded`. `None` when a line is not text:
+/// dropping it could hide the entry the proxy appended (AC-05).
+fn forwarded_list(headers: &HeaderMap) -> Option<Vec<String>> {
+    let lines = |name: &str| -> Option<String> {
+        let parts = headers
             .get_all(name)
             .iter()
-            .map(|v| v.to_str().unwrap_or("\u{0}").to_string())
-            .collect::<Vec<_>>()
-            .join(",")
+            .map(|v| v.to_str().ok())
+            .collect::<Option<Vec<_>>>()?;
+        Some(parts.join(","))
     };
     if headers.contains_key("x-forwarded-for") {
-        return lines("x-forwarded-for")
-            .split(',')
-            .map(|e| e.trim().to_string())
-            .filter(|e| !e.is_empty())
-            .collect();
+        return Some(
+            lines("x-forwarded-for")?
+                .split(',')
+                .map(|e| e.trim().to_string())
+                .filter(|e| !e.is_empty())
+                .collect(),
+        );
     }
-    lines(header::FORWARDED.as_str())
-        .split(',')
-        .filter_map(|element| {
-            element.split(';').find_map(|pair| {
-                let (key, value) = pair.trim().split_once('=')?;
-                key.eq_ignore_ascii_case("for")
-                    .then(|| value.trim().trim_matches('"').to_string())
+    Some(
+        lines(header::FORWARDED.as_str())?
+            .split(',')
+            .filter_map(|element| {
+                element.split(';').find_map(|pair| {
+                    let (key, value) = pair.trim().split_once('=')?;
+                    key.eq_ignore_ascii_case("for")
+                        .then(|| value.trim().trim_matches('"').to_string())
+                })
             })
-        })
-        .collect()
+            .collect(),
+    )
 }
 
 /// Parse a forwarded entry: an IP, optionally with a port (`[v6]:port`).
@@ -164,7 +169,7 @@ pub fn client_address(peer: IpAddr, headers: &HeaderMap, trust_proxy: bool) -> O
     if !trust_proxy || !is_private(peer) {
         return None;
     }
-    let list = forwarded_list(headers);
+    let list = forwarded_list(headers)?;
     for entry in list.iter().rev() {
         let ip = parse_forwarded_ip(entry)?;
         if !is_private(ip) {
@@ -424,6 +429,28 @@ mod tests {
             let h = headers(&[("x-forwarded-for", v)]);
             assert_eq!(client_address(peer, &h, true), None, "{v:?}");
         }
+        // A Forwarded line that is not text is never dropped silently: a
+        // forged private entry on another line must not become the client.
+        let mut h = headers(&[("forwarded", "for=192.168.1.5")]);
+        h.append(
+            header::FORWARDED,
+            HeaderValue::from_bytes(b"for=203.0.113.7\xff").unwrap(),
+        );
+        assert_eq!(
+            client_address(peer, &h, true),
+            None,
+            "Forwarded with invalid bytes"
+        );
+        let mut h = headers(&[("x-forwarded-for", "192.168.1.5")]);
+        h.append(
+            "x-forwarded-for",
+            HeaderValue::from_bytes(b"8.8.8.8\xff").unwrap(),
+        );
+        assert_eq!(
+            client_address(peer, &h, true),
+            None,
+            "X-Forwarded-For with invalid bytes"
+        );
         // An unreadable entry *before* the client (further left) is not read.
         let h = headers(&[("x-forwarded-for", "unknown, 8.8.8.8")]);
         assert_eq!(client_address(peer, &h, true), Some(ip("8.8.8.8")));

@@ -495,7 +495,10 @@ fn startup_refuses_unknown_modes_and_never_without_loopback() {
     );
     let err =
         krake_server::resolve_auth_mode(&Config { ..config.clone() }, Some("never")).unwrap_err();
-    assert!(err.contains("0.0.0.0:1516"), "{err}");
+    assert!(
+        err.contains("0.0.0.0:1516") && err.contains("KRAKE_AUTH_MODE"),
+        "{err}"
+    );
 
     // The environment wins; an empty value counts as unset; case is ignored.
     let config = Config::default();

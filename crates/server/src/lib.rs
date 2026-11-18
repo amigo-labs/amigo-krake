@@ -122,8 +122,13 @@ pub fn resolve_auth_mode(
         )
     })?;
     if env_mode.unwrap_or(file_mode) == AuthMode::Never && !config.server.is_bind_loopback() {
+        let setting = if env_mode.is_some() {
+            "KRAKE_AUTH_MODE"
+        } else {
+            "server.auth_mode"
+        };
         return Err(format!(
-            "server.auth_mode \"never\" needs a loopback bind (127.0.0.1, ::1 or localhost), \
+            "{setting} \"never\" needs a loopback bind (127.0.0.1, ::1 or localhost), \
              but server.bind is \"{}\"",
             config.server.bind
         ));
