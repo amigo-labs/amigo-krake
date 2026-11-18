@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { AppConfig } from "../../lib/api";
   import { locale, tr } from "../../lib/i18n";
-  import { AUTH_MODES, needsConfirmation, securityView, type AuthMode } from "../../lib/security";
+  import { AUTH_MODES, chooseMode, securityView, type AuthMode } from "../../lib/security";
   import Card from "@amigo-labs/krake-ui/components/Card.svelte";
   import Banner from "@amigo-labs/krake-ui/components/Banner.svelte";
   import Button from "@amigo-labs/krake-ui/components/Button.svelte";
@@ -22,12 +22,9 @@
   // leaves the current mode checked.
   function choose(e: Event, mode: AuthMode) {
     e.preventDefault();
-    if (mode === view.mode || blocked(mode)) return;
-    if (needsConfirmation(view.mode, mode)) {
-      pending = mode;
-      return;
-    }
-    apply(mode);
+    const choice = chooseMode(view, mode);
+    if (choice.kind === "confirm") pending = choice.mode;
+    else if (choice.kind === "apply") apply(choice.mode);
   }
 
   function apply(mode: AuthMode) {

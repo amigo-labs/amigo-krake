@@ -216,7 +216,7 @@ Terms used below:
 | Mode private, phone at `192.168.1.20` opens `http://casa:1517` | Let in without login |
 | Mode private, same phone opens `http://krake.example.com` (resolves to LAN IP) | Login needed (not a local host name) |
 | Mode private, a public website in the LAN browser sends `fetch("http://192.168.1.10:1516/api/v1/downloads", {method:"POST"})` | `Origin` / `Sec-Fetch-Site: cross-site` → `401` |
-| Mode private, a public website embeds `<img src="http://192.168.1.10:1516/api/v1/updates/check">` | `Sec-Fetch-Site: cross-site` → `401` |
+| Mode private, a public website embeds `<img src="http://192.168.1.10:1516/api/v1/updates/check">` | Over HTTPS: `Sec-Fetch-Site: cross-site` → `401`. Over plain HTTP browsers send neither `Sec-Fetch-Site` nor `Origin` for this, so it is let in; harmless because no GET changes state and the response cannot be read cross-site |
 | Mode private, DNS rebinding: `evil.example` resolves to `192.168.1.10` | Not a local host name → `401` |
 | Mode private, nginx on the same host, `trust_proxy` off, request from the internet | Carries `X-Forwarded-For` → login needed |
 | Mode private, `trust_proxy` on, client sends `X-Forwarded-For: 192.168.1.5`, proxy appends `203.0.113.7` | Last entry public → login needed |
@@ -246,7 +246,7 @@ Terms used below:
 | IPv6 global addresses are not private | A fixed list cannot know the LAN's prefix; the user chose the fixed set | IPv6 clients on the LAN must log in |
 | The peer address is the real client unless a proxy says otherwise | Krake cannot see through forwarders that drop the client address | Setups with such forwarders let the internet in; AC-17 tells them to stay on **always** |
 | An invalid or revoked login falls back to the network rule | The network rule alone decides who gets in without login; a stale cookie should not lock a LAN user out | A revoked token keeps working from the LAN while the mode allows it |
-| `Sec-Fetch-Site` and `Origin` keep browsers out of cross-site requests | Every current browser sends `Sec-Fetch-Site`; old browsers still send `Origin` on non-GET requests | An old browser allows cross-site GET without either header; acceptable because no Krake GET endpoint changes state |
+| `Sec-Fetch-Site` and `Origin` keep browsers out of cross-site requests that change something | Browsers send `Origin` on every non-GET cross-site request; `Sec-Fetch-Site` only to HTTPS and localhost | A cross-site GET over plain HTTP carries neither header and is let in; acceptable because no Krake GET endpoint changes state and CORS keeps the response unreadable |
 
 ## Open questions
 
@@ -263,14 +263,14 @@ Terms used below:
 | AC-05 | `crates/server/src/local_auth.rs` tests (client_address_*, forwarded_*, unreadable_forwarded_entries_are_never_let_in) + `crates/server/tests/local_auth_tests.rs`::forwarded_requests_need_trust_proxy | built |        |
 | AC-06 | `crates/server/tests/local_auth_tests.rs`::a_valid_login_wins_and_an_invalid_one_falls_back | built |        |
 | AC-07 | `crates/server/tests/local_auth_tests.rs`::me_reports_the_mode_and_added_downloads_belong_to_no_one, ::websocket_without_login_sees_events_and_is_closed_when_the_mode_changes | built |        |
-| AC-08 | `crates/server/tests/local_auth_tests.rs`::websocket_without_login_sees_events_and_is_closed_when_the_mode_changes | built |        |
-| AC-09 | `crates/server/tests/local_auth_tests.rs`::environment_mode_overrides_the_file_and_is_fixed, ::startup_refuses_unknown_modes_and_never_without_loopback | built |        |
+| AC-08 | `crates/server/tests/local_auth_tests.rs`::websocket_without_login_sees_events_and_is_closed_when_the_mode_changes + `crates/server/tests/local_auth_tests.rs`::websocket_through_a_proxy_is_closed_when_trust_proxy_goes_off | built |        |
+| AC-09 | `crates/server/tests/local_auth_tests.rs`::environment_mode_overrides_the_file_and_is_fixed, ::startup_refuses_unknown_modes_and_never_without_loopback + `web-ui/test/settingsSecurity.test.ts` (a mode set by the environment is locked) | built |        |
 | AC-10 | `crates/server/tests/local_auth_tests.rs`::unknown_modes_are_refused_through_the_api, ::startup_refuses_unknown_modes_and_never_without_loopback | built |        |
-| AC-11 | `crates/server/tests/local_auth_tests.rs`::a_mode_change_applies_to_the_next_request, ::concurrent_changes_cannot_combine_into_a_refused_state | built |        |
+| AC-11 | `crates/server/tests/local_auth_tests.rs`::a_mode_change_applies_to_the_next_request, ::concurrent_changes_cannot_combine_into_a_refused_state + `crates/server/tests/local_auth_tests.rs`::webhook_changes_cannot_undo_a_mode_change | built |        |
 | AC-12 | `web-ui/test/security.test.ts` (boot: opens without login page; shows the login page on 401; a later 401 flips to login) + `crates/server/tests/local_auth_tests.rs::me_reports_the_mode_and_added_downloads_belong_to_no_one` | built |        |
-| AC-13 | `web-ui/test/security.test.ts` (securityView: mode in effect; environment) + browser check (Decisions) | built |        |
-| AC-14 | `web-ui/test/security.test.ts` (securityView: never only on a loopback bind; reads loopback binds) | built |        |
-| AC-15 | `web-ui/test/security.test.ts` (needsConfirmation) + browser check (Decisions) | built |        |
+| AC-13 | `web-ui/test/security.test.ts` (securityView: mode in effect; environment) + browser check (Decisions) + `web-ui/test/settingsSecurity.test.ts` (shows the three modes with explanations, the current mode and the warning; renders in German too) | built |        |
+| AC-14 | `web-ui/test/security.test.ts` (securityView: never only on a loopback bind; reads loopback binds) + `web-ui/test/settingsSecurity.test.ts` (never needs a loopback bind) + `crates/core/src/config.rs::loopback_binds_are_any_loopback_literal_or_localhost` | built |        |
+| AC-15 | `web-ui/test/security.test.ts` (needsConfirmation) + browser check (Decisions) + `web-ui/test/settingsSecurity.test.ts` (chooseMode) | built |        |
 | AC-16 | `web-ui/test/security.test.ts` (security strings) | built |        |
 | AC-17 | `crates/server/tests/local_auth_tests.rs::hosting_docs_describe_the_modes_and_their_limits` (docs/hosting.md, "Login for your own network") | built |        |
 
@@ -314,3 +314,22 @@ Terms used below:
 - 2026-11-18 (spec-build): The radio buttons change only through the saved
   config (the click is prevented and re-applied after confirmation), so a
   cancelled confirmation leaves the current mode checked.
+- 2026-11-18 (spec-build, check round 1): A WebSocket now subscribes to
+  config changes before the upgrade and checks itself once more right
+  after, so a change between the auth decision and the subscription is not
+  missed (AC-08). Webhook create/delete write the config through the same
+  lock and bump the change counter as `PUT /config` (AC-11); the race is too
+  narrow to show reliably in a test, `webhook_changes_cannot_undo_a_mode_change`
+  guards the outcome.
+- 2026-11-18 (spec-build, check round 1): `ServerConfig::is_bind_loopback`
+  accepts any loopback IP literal (127.0.0.0/8, ::1) and `localhost` in any
+  case, as the spec's "Loopback bind" says; the web UI uses the same rule.
+- 2026-11-18 (spec-build, check round 1): The rendering of Settings ▸
+  Security is tested by server-side rendering the component with
+  `svelte/server` (the Svelte plugin added to `web-ui/vitest.config.ts`, no
+  new dependency); the click decision lives in `chooseMode`.
+- 2026-11-18 (spec-build, check round 1): Browsers send `Sec-Fetch-Site`
+  only to HTTPS and localhost; the edge case and assumption about
+  cross-site GETs over plain HTTP were corrected (no GET changes state).
+  `docs/hosting.md` now says that a proxy writing only `Forwarded` must
+  drop a client's `X-Forwarded-For`.

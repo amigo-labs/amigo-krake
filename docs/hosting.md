@@ -122,12 +122,18 @@ addition:
 Things to know before you choose `private`:
 
 - **Reverse proxies.** A request that went through a proxy counts as
-  private only with `KRAKE_TRUST_PROXY=true`, only when the proxy itself
-  connects from a private address, and only when the first public address
-  in `X-Forwarded-For` (read from the end, past every private proxy in a
-  chain) is private. Without `KRAKE_TRUST_PROXY`, every proxied request
-  needs a login. A proxy that forwards a public domain as `Host` keeps the
-  login as well.
+  private only with `KRAKE_TRUST_PROXY=true` and only when the proxy itself
+  connects from a private address. Krake then reads `X-Forwarded-For` from
+  the end, skips the private addresses of the proxies in the chain, and
+  takes the first address that is not private as the client: such a
+  request needs a login. Only when every entry is private does the request
+  count as private. Without `KRAKE_TRUST_PROXY`, every proxied request needs
+  a login. A proxy that forwards a public domain as `Host` keeps the login
+  as well.
+- **Let the proxy write `X-Forwarded-For`.** Krake reads
+  `X-Forwarded-For` when it is present and `Forwarded` only otherwise. A
+  proxy that writes only `Forwarded` must remove an `X-Forwarded-For` the
+  client sent, or a forged one is believed.
 - **IPv6.** Phones and laptops on a home network often use global IPv6
   addresses (`2001:…`); those are not private and still need a login.
 - **Forwarders that hide the client.** Docker Desktop (macOS, Windows),
