@@ -228,14 +228,14 @@ Terms used below:
 | AC-02 | `crates/core/tests/link_list_fixtures.rs::link_list_fixtures`, `web-ui/test/linkList.test.ts` | built |        |
 | AC-03 | `crates/core/tests/link_list_fixtures.rs::link_list_fixtures`, `web-ui/test/linkList.test.ts` | built |        |
 | AC-04 | `crates/core/tests/link_list_fixtures.rs::link_list_fixtures`, `web-ui/test/linkList.test.ts` | built |        |
-| AC-05 | `web-ui/test/linkListImport.test.ts` (queueLinkList: active downloads not sent; resultToast: zero counts left out) + browser wiring check (Decisions) | built |        |
-| AC-06 | `web-ui/test/linkListImport.test.ts` (prepareLinkList) + browser wiring check (Decisions) | built |        |
-| AC-07 | `web-ui/test/linkList.test.ts` + `web-ui/test/linkListImport.test.ts` + browser wiring check (Decisions) | built |        |
+| AC-05 | `web-ui/test/linkListImport.test.ts` (queueLinkList: active downloads not sent; resultToast: zero counts left out; component wiring (AC-05, AC-06, AC-07, AC-09, AC-10): routes dropped files) | built |        |
+| AC-06 | `web-ui/test/linkListImport.test.ts` (component wiring (AC-05, AC-06, AC-07, AC-09, AC-10): fills the field / keeps the field and names the problem) | built |        |
+| AC-07 | `web-ui/test/linkList.test.ts` + `web-ui/test/linkListImport.test.ts` (component wiring (AC-05, AC-06, AC-07, AC-09, AC-10): leaves drops and pastes into text fields alone) | built |        |
 | AC-08 | `web-ui/test/linkListImport.test.ts` (keeps the other links when some are rejected; first five, then and N more) | built |        |
-| AC-09 | `web-ui/test/linkListImport.test.ts` (reports a list without links) + browser wiring check | built |        |
-| AC-10 | `web-ui/test/linkListImport.test.ts` (refuses more than 1 MiB, UTF-8 bytes, file size) + browser wiring check | built |        |
+| AC-09 | `web-ui/test/linkListImport.test.ts` (reports a list without links; component wiring (AC-05, AC-06, AC-07, AC-09, AC-10): no-links message) | built |        |
+| AC-10 | `web-ui/test/linkListImport.test.ts` (refuses more than 1 MiB, UTF-8 bytes, file size; component wiring (AC-05, AC-06, AC-07, AC-09, AC-10): names the limit) | built |        |
 | AC-11 | `web-ui/test/linkListImport.test.ts` (several requests, body limit, stops at a failed request) | built |        |
-| AC-12 | `web-ui/test/linkListImport.test.ts` (link list strings) + `web-ui/test/i18nKeys.test.ts` | built |        |
+| AC-12 | `web-ui/test/linkListImport.test.ts` (link list strings) + `web-ui/test/i18nKeys.test.ts` + `crates/cli/src/main.rs::link_list_tests::link_list_keys_exist_in_english_and_german` + `crates/cli/tests/add_list.rs::messages_follow_the_system_language` | built |        |
 | AC-13 |      | dropped |        |
 | AC-14 |      | dropped |        |
 | AC-15 |      | dropped |        |
@@ -277,3 +277,13 @@ Terms used below:
 - 2026-11-18 (spec-build): The add panel's submit now uses the link list rule
   too, so `magnet:` and `ftp:` lines, accepted before, count as not
   recognized; Krake downloads neither (out of scope of this spec).
+- 2026-11-18 (spec-build, round 2): The acceptance check found the component
+  wiring untested. Its decisions (routing a dropped file, leaving text fields
+  alone, the add panel's state after a file choice, the problem messages) now
+  live in pure functions in `web-ui/src/lib/linkListImport.ts` with unit
+  tests; the Svelte components only call them.
+- 2026-11-18 (spec-build, round 2): AC-12 covers the CLI too. The CLI's
+  `--list` messages are in `locales/en.json` / `de.json`, and the CLI now
+  embeds both locale files (it read `./locales` from the working directory,
+  which exists only inside the repository, so it showed raw keys elsewhere).
+  `docker/Dockerfile` copies `locales/` into the Rust build stage for that.

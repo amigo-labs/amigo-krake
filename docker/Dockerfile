@@ -31,6 +31,7 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY crates/ crates/
 COPY tauri/ tauri/
+COPY locales/ locales/
 COPY --from=ui-builder /app/web-ui/dist web-ui/dist
 
 # Plugin-registry and self-update pubkeys are baked into the binary at compile

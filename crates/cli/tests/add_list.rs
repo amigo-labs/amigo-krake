@@ -6,7 +6,16 @@ use std::process::{Command, Output, Stdio};
 
 /// Run `krake` in a fresh working directory (its `krake.db` lands there).
 fn krake(dir: &std::path::Path, args: &[&str], stdin: Option<&[u8]>) -> Output {
+    krake_in("C", dir, args, stdin)
+}
+
+/// Like [`krake`], with `LANG` set to `lang`.
+fn krake_in(lang: &str, dir: &std::path::Path, args: &[&str], stdin: Option<&[u8]>) -> Output {
     let mut child = Command::new(env!("CARGO_BIN_EXE_krake"))
+        .env_remove("LC_ALL")
+        .env_remove("LC_MESSAGES")
+        .env_remove("LANGUAGE")
+        .env("LANG", lang)
         .args(args)
         .current_dir(dir)
         .env("KRAKE_CONFIG_DIR", dir)
@@ -91,4 +100,38 @@ fn every_link_rejected_fails() {
     );
     assert!(!out.status.success(), "{}", text(&out));
     assert!(text(&out).contains("rejected 1"), "{}", text(&out));
+}
+
+#[test]
+fn messages_follow_the_system_language() {
+    // AC-12: the CLI's link list messages exist in English and German, also
+    // when krake runs outside the repository (no `locales/` next to it).
+    let dir = tempfile::tempdir().unwrap();
+    let list = b"https://host.example/a.rar\n";
+    let de = krake_in(
+        "de_DE.UTF-8",
+        dir.path(),
+        &["add", "--list", "-"],
+        Some(list),
+    );
+    assert!(text(&de).contains("Link-Liste"), "{}", text(&de));
+    let dir = tempfile::tempdir().unwrap();
+    let en = krake_in(
+        "en_US.UTF-8",
+        dir.path(),
+        &["add", "--list", "-"],
+        Some(list),
+    );
+    assert!(text(&en).contains("Link list"), "{}", text(&en));
+    let none = krake_in(
+        "de_DE.UTF-8",
+        dir.path(),
+        &["add", "--list", "-"],
+        Some(b"hallo\n"),
+    );
+    assert!(
+        text(&none).contains("enthält keine Links"),
+        "{}",
+        text(&none)
+    );
 }
