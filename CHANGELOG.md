@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.1.7](https://github.com/amigo-labs/amigo-krake/compare/v0.1.6...v0.1.7) (2026-11-18)
+
+
+### Features
+
+* **cli:** queue a link list with krake add --list (AC-18, AC-19, AC-20, AC-21, AC-22) ([553b050](https://github.com/amigo-labs/amigo-krake/commit/553b050b2bd5a5e9e81400afec29e6d932127e01))
+* **cli:** translate the link list messages and embed the locales (AC-12) ([0547248](https://github.com/amigo-labs/amigo-krake/commit/05472482969f20ad259b55da9a140ad8f877775f))
+* **core:** parse link lists by the shared line rule (AC-01, AC-02, AC-03, AC-04) ([243a24b](https://github.com/amigo-labs/amigo-krake/commit/243a24b13b07d4725b2602ebb22f676118936bbf))
+* link list import + optional login for private networks ([92e3235](https://github.com/amigo-labs/amigo-krake/commit/92e3235f2184cce3bd272a3ab75e939d96514c2f))
+* **server:** decide which requests a private network lets in without login (AC-02, AC-03, AC-05) ([f26d123](https://github.com/amigo-labs/amigo-krake/commit/f26d123cac7c2030a36f3c76611542cfa44ab746))
+* **server:** let private networks in without login by auth_mode (AC-01 to AC-11) ([20660fb](https://github.com/amigo-labs/amigo-krake/commit/20660fbecdc10cf05033f6c547a54e2f492d55ee))
+* **web-ui:** choose who needs to log in under Settings &gt; Security (AC-12, AC-13, AC-14, AC-15, AC-16) ([1644c99](https://github.com/amigo-labs/amigo-krake/commit/1644c99442a427121d8b7b1806744192c8060972))
+* **web-ui:** import link lists by drop, paste and the add panel (AC-05, AC-06, AC-07, AC-08, AC-09, AC-10, AC-11, AC-12) ([ff72157](https://github.com/amigo-labs/amigo-krake/commit/ff721573223ecae7667d3d0c5c97b295e8f039d8))
+* **web-ui:** parse link lists by the shared line rule (AC-01, AC-02, AC-03, AC-04) ([07c6485](https://github.com/amigo-labs/amigo-krake/commit/07c6485b24720ceaab8ba47ec2062fe61636a7a2))
+
+
+### Bug Fixes
+
+* never read auth_mode_from_env from a file, and match IPv6 loopback in the UI (AC-09, AC-14) ([6c8dd39](https://github.com/amigo-labs/amigo-krake/commit/6c8dd39ddfe587a804c28e9963eb1d7bcfd0ab2a))
+* **server:** close the config races of login-free access and accept every loopback bind (AC-08, AC-11, AC-14) ([ef645d5](https://github.com/amigo-labs/amigo-krake/commit/ef645d50b31b3170174a9f0988f04aa2059b3847))
+* **server:** refuse login-free access for unreadable forwarding headers (AC-05, AC-04) ([db2d884](https://github.com/amigo-labs/amigo-krake/commit/db2d884e7103dfd198507b548c42c3bbc335bb17))
+* **server:** serialize the setup wizard's config write, and wait for the dialog in the click test (AC-08, AC-11, AC-15) ([333a4e0](https://github.com/amigo-labs/amigo-krake/commit/333a4e0d831c1ed82ac44a22ba89bc61fa778431))
+* **web-ui:** show every line of a link list result toast (AC-08, AC-11) ([1a2f2c6](https://github.com/amigo-labs/amigo-krake/commit/1a2f2c63e2470b1263f8330acf0d64e28db8dbdd))
+* **web-ui:** show only the stored config after a failed settings save (AC-13) ([a4dda0f](https://github.com/amigo-labs/amigo-krake/commit/a4dda0fd5a2ef34f432a92032623cddd282c933a))
+
 ## [0.1.6](https://github.com/amigo-labs/amigo-krake/compare/v0.1.5...v0.1.6) (2026-11-18)
 
 
