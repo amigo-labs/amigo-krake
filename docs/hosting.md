@@ -108,7 +108,8 @@ auth_mode = "private"   # always | private | never
 | `never` | Everybody who reaches the server directly. Only allowed while the server listens on loopback (`127.0.0.1`, `::1`, `localhost`); otherwise it refuses to start. |
 
 Whoever gets in without a login has full control, including the settings
-and the admin password. A request is only let in without login when, in
+and the admin password; they can also approve devices that ask to pair, and
+those devices keep their access after you switch back to `always`. A request is only let in without login when, in
 addition:
 
 - the browser calls Krake by an IP address, `localhost`, a name without a

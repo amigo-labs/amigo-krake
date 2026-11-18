@@ -260,7 +260,7 @@ Terms used below:
 | AC-02 | `crates/server/src/local_auth.rs` tests (private_ranges, local_host_names, same_origin_rules, modes) + `crates/server/tests/local_auth_tests.rs`::private_lets_local_requests_in, ::private_refuses_other_hosts_and_origins | built |        |
 | AC-03 | `crates/server/src/local_auth.rs` tests::modes + `crates/server/tests/local_auth_tests.rs`::never_lets_direct_requests_in_on_a_loopback_bind | built |        |
 | AC-04 | `crates/server/tests/local_auth_tests.rs`::never_needs_a_loopback_bind_through_the_api, ::startup_refuses_unknown_modes_and_never_without_loopback | built |        |
-| AC-05 | `crates/server/src/local_auth.rs` tests (client_address_*, forwarded_*, unreadable_forwarded_entries_are_never_let_in) + `crates/server/tests/local_auth_tests.rs`::forwarded_requests_need_trust_proxy | built |        |
+| AC-05 | `crates/server/src/local_auth.rs` tests (client_address_*, forwarded_*, unreadable_forwarded_entries_are_never_let_in) + `crates/server/tests/local_auth_tests.rs`::forwarded_requests_need_trust_proxy + `local_auth::tests::unreadable_forwarded_entries_are_never_let_in` (header lines that are not text) | built |        |
 | AC-06 | `crates/server/tests/local_auth_tests.rs`::a_valid_login_wins_and_an_invalid_one_falls_back | built |        |
 | AC-07 | `crates/server/tests/local_auth_tests.rs`::me_reports_the_mode_and_added_downloads_belong_to_no_one, ::websocket_without_login_sees_events_and_is_closed_when_the_mode_changes | built |        |
 | AC-08 | `crates/server/tests/local_auth_tests.rs`::websocket_without_login_sees_events_and_is_closed_when_the_mode_changes + `crates/server/tests/local_auth_tests.rs`::websocket_through_a_proxy_is_closed_when_trust_proxy_goes_off | built |        |
@@ -268,7 +268,7 @@ Terms used below:
 | AC-10 | `crates/server/tests/local_auth_tests.rs`::unknown_modes_are_refused_through_the_api, ::startup_refuses_unknown_modes_and_never_without_loopback | built |        |
 | AC-11 | `crates/server/tests/local_auth_tests.rs`::a_mode_change_applies_to_the_next_request, ::concurrent_changes_cannot_combine_into_a_refused_state + `crates/server/tests/local_auth_tests.rs`::webhook_changes_cannot_undo_a_mode_change | built |        |
 | AC-12 | `web-ui/test/security.test.ts` (boot: opens without login page; shows the login page on 401; a later 401 flips to login) + `crates/server/tests/local_auth_tests.rs::me_reports_the_mode_and_added_downloads_belong_to_no_one` | built |        |
-| AC-13 | `web-ui/test/security.test.ts` (securityView: mode in effect; environment) + browser check (Decisions) + `web-ui/test/settingsSecurity.test.ts` (shows the three modes with explanations, the current mode and the warning; renders in German too) | built |        |
+| AC-13 | `web-ui/test/security.test.ts` (securityView: mode in effect; environment) + browser check (Decisions) + `web-ui/test/settingsSecurity.test.ts` (shows the three modes with explanations, the current mode and the warning; renders in German too) + `web-ui/test/saveConfig.test.ts` (the page shows only what the server stored) | built |        |
 | AC-14 | `web-ui/test/security.test.ts` (securityView: never only on a loopback bind; reads loopback binds) + `web-ui/test/settingsSecurity.test.ts` (never needs a loopback bind) + `crates/core/src/config.rs::loopback_binds_are_any_loopback_literal_or_localhost` | built |        |
 | AC-15 | `web-ui/test/security.test.ts` (needsConfirmation) + browser check (Decisions) + `web-ui/test/settingsSecurity.test.ts` (chooseMode) | built |        |
 | AC-16 | `web-ui/test/security.test.ts` (security strings) | built |        |
@@ -333,3 +333,15 @@ Terms used below:
   cross-site GETs over plain HTTP were corrected (no GET changes state).
   `docs/hosting.md` now says that a proxy writing only `Forwarded` must
   drop a client's `X-Forwarded-For`.
+- 2026-11-18 (spec-build, check round 2): A forwarding header line that is
+  not text makes the whole request ineligible for login-free access; before,
+  an unreadable `Forwarded` line was skipped, which could hide the entry the
+  proxy appended (AC-05).
+- 2026-11-18 (spec-build, check round 2): The settings page applies only what
+  the server stored: a failed save reloads the stored config and names the
+  server's error, so a refused or lost switch (for example back to
+  "always") never looks applied (AC-13).
+- 2026-11-18 (spec-build, check round 2): `docs/hosting.md` notes that
+  login-free access can approve pairing devices, which keep their tokens
+  after a switch back to `always`; the start error names `KRAKE_AUTH_MODE`
+  when the environment set `never`.
