@@ -110,8 +110,10 @@ jobs:
 
       # rquickjs-sys hands clang its vendored libc headers as a verbatim
       # `\\?\C:\...` path, in which `bits/alltypes.h` (a forward slash) is
-      # not found. The same folder as a plain path makes the plugin guest
-      # (crates/plugin-guest, built by crates/plugin-runtime/build.rs) build.
+      # not found. Clang drops a second -isystem entry for the same folder
+      # as a duplicate, so the headers go in as a copy under a plain path;
+      # that makes the plugin guest (crates/plugin-guest, built by
+      # crates/plugin-runtime/build.rs) build.
       - name: Plain include path for the plugin guest (Windows)
         if: runner.os == 'Windows'
         shell: bash
@@ -121,8 +123,11 @@ jobs:
             | jq -r '.packages[] | select(.name == "rquickjs-sys") | .manifest_path' | head -1)
           dir="${dir//\\//}"
           include="$(dirname "$dir")/vendor/wasi-libc/include"
-          test -f "$include/bits/alltypes.h"
-          echo "CFLAGS_wasm32_unknown_unknown=-isystem $include" >> "$GITHUB_ENV"
+          copy="${RUNNER_TEMP//\\//}/wasi-libc-include"
+          rm -rf "$copy"
+          cp -r "$include" "$copy"
+          test -f "$copy/bits/alltypes.h"
+          echo "CFLAGS_wasm32_unknown_unknown=-isystem $copy" >> "$GITHUB_ENV"
 
       - name: Create web-ui dist stub
         run: mkdir -p web-ui/dist
@@ -281,8 +286,10 @@ jobs:
 
       # rquickjs-sys hands clang its vendored libc headers as a verbatim
       # `\\?\C:\...` path, in which `bits/alltypes.h` (a forward slash) is
-      # not found. The same folder as a plain path makes the plugin guest
-      # (crates/plugin-guest, built by crates/plugin-runtime/build.rs) build.
+      # not found. Clang drops a second -isystem entry for the same folder
+      # as a duplicate, so the headers go in as a copy under a plain path;
+      # that makes the plugin guest (crates/plugin-guest, built by
+      # crates/plugin-runtime/build.rs) build.
       - name: Plain include path for the plugin guest (Windows)
         if: runner.os == 'Windows'
         shell: bash
@@ -292,8 +299,11 @@ jobs:
             | jq -r '.packages[] | select(.name == "rquickjs-sys") | .manifest_path' | head -1)
           dir="${dir//\\//}"
           include="$(dirname "$dir")/vendor/wasi-libc/include"
-          test -f "$include/bits/alltypes.h"
-          echo "CFLAGS_wasm32_unknown_unknown=-isystem $include" >> "$GITHUB_ENV"
+          copy="${RUNNER_TEMP//\\//}/wasi-libc-include"
+          rm -rf "$copy"
+          cp -r "$include" "$copy"
+          test -f "$copy/bits/alltypes.h"
+          echo "CFLAGS_wasm32_unknown_unknown=-isystem $copy" >> "$GITHUB_ENV"
 
       # The web UI is a pnpm workspace package (it depends on packages/ui
       # through `workspace:*`); there is no package-lock.json for `npm ci`.
