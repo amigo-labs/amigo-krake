@@ -6,6 +6,7 @@ pub mod auth;
 pub mod background;
 pub mod clicknload;
 pub mod feedback;
+pub mod local_auth;
 pub mod login;
 pub mod net_guard;
 pub mod nzbget_api;
@@ -88,7 +89,51 @@ pub fn build_test_state_with_registry(
         captcha_manager,
         webhook_dispatcher,
         config_path,
+        auth_mode_env: None,
+        bind_is_loopback: config.server.is_bind_loopback(),
+        config_lock: Arc::new(tokio::sync::Mutex::new(())),
+        config_epoch: Arc::new(tokio::sync::watch::channel(0).0),
     }
+}
+
+/// Check the login mode at startup (spec `local-auth-bypass`, AC-04, AC-10)
+/// and return the one `KRAKE_AUTH_MODE` sets, if any. An empty or blank
+/// `env` counts as unset. Errors name the value and the allowed values, or
+/// the bind address `never` cannot run on.
+pub fn resolve_auth_mode(
+    config: &Config,
+    env: Option<&str>,
+) -> Result<Option<krake_core::config::AuthMode>, String> {
+    use krake_core::config::AuthMode;
+    let env_mode = match env.map(str::trim).filter(|v| !v.is_empty()) {
+        None => None,
+        Some(value) => Some(AuthMode::parse(value).ok_or_else(|| {
+            format!(
+                "KRAKE_AUTH_MODE: unknown value \"{value}\" (allowed: {})",
+                AuthMode::ALLOWED
+            )
+        })?),
+    };
+    let file_mode = AuthMode::parse(&config.server.auth_mode).ok_or_else(|| {
+        format!(
+            "server.auth_mode: unknown value \"{}\" (allowed: {})",
+            config.server.auth_mode,
+            AuthMode::ALLOWED
+        )
+    })?;
+    if env_mode.unwrap_or(file_mode) == AuthMode::Never && !config.server.is_bind_loopback() {
+        let setting = if env_mode.is_some() {
+            "KRAKE_AUTH_MODE"
+        } else {
+            "server.auth_mode"
+        };
+        return Err(format!(
+            "{setting} \"never\" needs a loopback bind (127.0.0.1, ::1 or localhost), \
+             but server.bind is \"{}\"",
+            config.server.bind
+        ));
+    }
+    Ok(env_mode)
 }
 
 /// Build the full Axum router for testing (API + WS, no static files).

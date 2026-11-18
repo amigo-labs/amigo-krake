@@ -48,7 +48,8 @@ export const getStatus = () => api<{ status: string; version: string }>("GET", "
 export const getStats = () => api<{ active_downloads: number; speed_bytes_per_sec: number; queued: number; completed: number }>("GET", "/stats");
 export const getDownloads = () => api<Download[]>("GET", "/downloads");
 export const addDownload = (url: string, filename?: string) => api<{ id: string }>("POST", "/downloads", { url, filename });
-export const addBatch = (urls: string[]) => api<{ ids: string[] }>("POST", "/downloads/batch", { urls });
+export const addBatch = (urls: string[]) =>
+  api<{ ids: string[]; errors?: string[] }>("POST", "/downloads/batch", { urls });
 export const pauseDownload = (id: string) => api<void>("PATCH", `/downloads/${id}`, { action: "pause" });
 export const resumeDownload = (id: string) => api<void>("PATCH", `/downloads/${id}`, { action: "resume" });
 export const retryDownload = (id: string) => api<void>("PATCH", `/downloads/${id}`, { action: "retry" });
@@ -345,6 +346,14 @@ export interface AppConfig {
     usenet: boolean;
     rss_feeds: boolean;
     server_stats: boolean;
+  };
+  server: {
+    bind: string;
+    /** Who must log in: always, private, never (spec local-auth-bypass). */
+    auth_mode?: string;
+    /** Set when KRAKE_AUTH_MODE fixes the mode. */
+    auth_mode_from_env?: boolean;
+    [key: string]: unknown;
   };
   [key: string]: unknown;
 }

@@ -76,6 +76,9 @@ struct MeResponse {
     kind: &'static str,
     username: Option<String>,
     token_name: Option<String>,
+    /// For `kind: "local"`: the login mode that let the request in.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mode: Option<&'static str>,
 }
 
 pub fn login_router(state: AppState, auth: AuthState) -> Router {
@@ -224,16 +227,25 @@ async fn me(req: axum::extract::Request) -> Response {
             kind: "session",
             username: Some(username),
             token_name: None,
+            mode: None,
         },
         Some(Principal::ApiToken { name, .. }) => MeResponse {
             kind: "api_token",
             username: None,
             token_name: Some(name),
+            mode: None,
         },
         Some(Principal::Preshared) => MeResponse {
             kind: "preshared",
             username: None,
             token_name: None,
+            mode: None,
+        },
+        Some(Principal::Local { mode }) => MeResponse {
+            kind: "local",
+            username: None,
+            token_name: None,
+            mode: Some(mode.as_str()),
         },
         None => return StatusCode::UNAUTHORIZED.into_response(),
     };

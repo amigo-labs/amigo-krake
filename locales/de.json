@@ -77,5 +77,12 @@
     "postprocess.sequential": "Sequenzieller Modus (energiesparend)",
 
     "confirm.yes": "Ja",
-    "confirm.no": "Nein"
+    "confirm.no": "Nein",
+
+    "linklist.cli.queued": "  Eingereiht: {link} → {id}",
+    "linklist.cli.already_queued": "  Schon in der Liste: {link}",
+    "linklist.cli.rejected": "  Abgelehnt: {link}: {reason}",
+    "linklist.cli.summary": "Link-Liste: eingereiht {queued}, schon in der Liste {already}, abgelehnt {rejected}, nicht erkannt {not_recognized}",
+    "linklist.cli.no_links": "{path}: enthält keine Links ({count} Zeilen nicht erkannt)",
+    "linklist.cli.too_large": "{path}: größer als 1 MiB, die Grenze für eine Link-Liste"
 }

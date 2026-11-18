@@ -1,8 +1,20 @@
 <script lang="ts">
-  import { addDownload, addBatch, importDlc, uploadNzb } from "../lib/api";
+  import { importDlc, uploadNzb } from "../lib/api";
   import { addToast } from "../lib/toast";
   import { locale, tr } from "../lib/i18n";
-  import { isFileDrag } from "../lib/dnd";
+  import { isFileDrag, isInternalDrag } from "../lib/dnd";
+  import { importLinkList, importLinkListFile } from "../lib/linkListActions";
+  import { pastedText, routeDroppedFile, shouldImportTextDrop } from "../lib/linkListImport";
+
+  // Text dropped or pasted into a field belongs to that field: the browser
+  // inserts it and the add panel queues it on submit (AC-07).
+  function isTextDrag(e: DragEvent): boolean {
+    return shouldImportTextDrop(
+      Array.from(e.dataTransfer?.types ?? []),
+      { files: isFileDrag(e), internal: isInternalDrag(e) },
+      e.target,
+    );
+  }
 
   let dragging = $state(false);
   let dragCounter = $state(0);
@@ -28,11 +40,17 @@
   }
 
   function handleDragOver(e: DragEvent) {
-    if (!isFileDrag(e)) return;
+    if (!isFileDrag(e) && !isTextDrag(e)) return;
     e.preventDefault();
   }
 
   async function handleDrop(e: DragEvent) {
+    if (isTextDrag(e)) {
+      e.preventDefault();
+      const text = e.dataTransfer?.getData("text/plain");
+      if (text) await importLinkList(text);
+      return;
+    }
     if (!isFileDrag(e)) return;
     e.preventDefault();
     dragging = false;
@@ -41,45 +59,31 @@
     const files = e.dataTransfer?.files;
     if (files && files.length > 0) {
       for (const file of files) {
-        const ext = file.name.split(".").pop()?.toLowerCase();
+        const route = routeDroppedFile(file.name);
         try {
-          if (ext === "dlc") {
+          if (route === "dlc") {
             await importDlc(file);
             addToast("success", tr($locale, "drop.dlc_imported"), file.name);
-          } else if (ext === "nzb") {
+          } else if (route === "nzb") {
             const text = await file.text();
             await uploadNzb(text);
             addToast("success", tr($locale, "drop.nzb_imported"), file.name);
           } else {
-            const text = await file.text();
-            const urls = text.split("\n").map((u) => u.trim()).filter((u) => u.startsWith("http"));
-            if (urls.length > 0) {
-              await addBatch(urls);
-              addToast("success", tr($locale, "drop.urls_added", { count: urls.length }), file.name);
-            }
+            await importLinkListFile(file);
           }
         } catch {
           addToast("error", tr($locale, "drop.import_failed"), file.name);
         }
       }
-      return;
     }
+  }
 
-    const text = e.dataTransfer?.getData("text/plain");
-    if (text) {
-      const urls = text.split("\n").map((u) => u.trim()).filter((u) => u.startsWith("http"));
-      try {
-        if (urls.length === 1) {
-          await addDownload(urls[0]);
-          addToast("success", tr($locale, "add.added"), urls[0]);
-        } else if (urls.length > 1) {
-          await addBatch(urls);
-          addToast("success", tr($locale, "add.added_many", { count: urls.length }));
-        }
-      } catch {
-        addToast("error", tr($locale, "add.failed"));
-      }
-    }
+  // Pasting text while no field has focus queues its links (AC-07).
+  async function handlePaste(e: ClipboardEvent) {
+    const text = pastedText(e.clipboardData?.getData("text/plain"), e.target, document.activeElement);
+    if (text === null) return;
+    e.preventDefault();
+    await importLinkList(text);
   }
 </script>
 
@@ -88,6 +92,7 @@
   ondragleave={handleDragLeave}
   ondragover={handleDragOver}
   ondrop={handleDrop}
+  onpaste={handlePaste}
 />
 
 {#if dragging}

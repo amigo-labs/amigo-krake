@@ -1,35 +1,38 @@
 <script lang="ts">
-  import { addDownload, addBatch } from "../lib/api";
   import { closeSidePanel } from "../lib/stores";
   import { addToast } from "../lib/toast";
   import { locale, tr } from "../lib/i18n";
+  import { parseLinkList } from "../lib/linkList";
+  import { MAX_LIST_BYTES, prepareLinkList } from "../lib/linkListImport";
+  import { chooseTextFile, listProblem, queueAndReport, translator } from "../lib/linkListActions";
   import Icon from "@amigo-labs/krake-ui/components/Icon.svelte";
 
   let urlInput = $state("");
   let loading = $state(false);
   let activeTab = $state<"url" | "file">("url");
+  /** Why a chosen text file did not fill the URL field (AC-06). */
+  let fileProblem = $state<string | null>(null);
+  /** Lines of the chosen file that were not links; the field only holds the
+   * links, so the count is kept until the user edits the field (AC-06). */
+  let fileSkipped = $state(0);
 
-  const URL_RE = /^(https?|magnet|ftp):/i;
-
-  let lines = $derived(urlInput.split("\n").map((u) => u.trim()).filter((u) => u.length > 0));
-  let validLinks = $derived(lines.filter((u) => URL_RE.test(u)));
-  let invalidCount = $derived(lines.length - validLinks.length);
+  // The same link list rule as a dropped file (AC-07).
+  let parsed = $derived(parseLinkList(urlInput));
+  let validLinks = $derived(parsed.links);
+  let invalidCount = $derived(parsed.notRecognized + fileSkipped);
   let canSubmit = $derived(validLinks.length > 0 && !loading);
 
   async function handleSubmit() {
     if (validLinks.length === 0) return;
+    const prepared = prepareLinkList(urlInput);
+    if (prepared.kind !== "ok") {
+      fileProblem = listProblem(prepared.kind);
+      return;
+    }
     loading = true;
     try {
-      if (validLinks.length === 1) {
-        await addDownload(validLinks[0]);
-        addToast("success", tr($locale, "add.added"));
-      } else {
-        await addBatch(validLinks);
-        addToast("success", tr($locale, "add.added_many", { count: validLinks.length }));
-      }
-      closeSidePanel();
-    } catch (e: any) {
-      addToast("error", tr($locale, "add.failed"), e?.message);
+      const result = await queueAndReport(prepared.list);
+      if (result.queued + result.alreadyQueued > 0 && result.notSent === 0) closeSidePanel();
     } finally {
       loading = false;
     }
@@ -41,18 +44,27 @@
     if (!file) return;
     loading = true;
     try {
-      const text = await file.text();
       const ext = file.name.split(".").pop()?.toLowerCase();
       if (ext === "nzb") {
         const { uploadNzb } = await import("../lib/api");
-        await uploadNzb(text);
+        await uploadNzb(await file.text());
       } else if (ext === "dlc") {
         const { importDlc } = await import("../lib/api");
         await importDlc(file);
       } else {
-        urlInput = text;
+        // A text file fills the URL field for review; nothing is queued
+        // before submit (AC-06).
+        const prepared =
+          file.size > MAX_LIST_BYTES
+            ? ({ kind: "too_large" } as const)
+            : prepareLinkList(new Uint8Array(await file.arrayBuffer()), file.size);
+        const choice = chooseTextFile(prepared, urlInput, file.name, translator());
+        urlInput = choice.urlInput;
+        fileSkipped = choice.fileSkipped;
+        fileProblem = choice.problem;
         activeTab = "url";
         loading = false;
+        input.value = "";
         return;
       }
       addToast("success", tr($locale, "add.file_imported"));
@@ -104,6 +116,10 @@
     <div role="tabpanel" id="add-panel-url" aria-labelledby="add-tab-url" tabindex="0" class="space-y-4 outline-none">
     <textarea
       bind:value={urlInput}
+      oninput={() => {
+        fileSkipped = 0;
+        fileProblem = null;
+      }}
       onkeydown={handleKeydown}
       placeholder={tr($locale, "add.placeholder")}
       rows="6"
@@ -122,6 +138,9 @@
         </span>
       {/if}
     </div>
+    {#if fileProblem}
+      <p class="text-xs list-problem" role="alert">{fileProblem}</p>
+    {/if}
     {#if invalidCount > 0}
       <p class="text-xs" style="color: var(--warning-ink)">
         {tr($locale, "add.links_invalid", { count: invalidCount })}
@@ -151,3 +170,9 @@
     </div>
   {/if}
 </div>
+
+<style>
+  .list-problem {
+    color: var(--danger-ink);
+  }
+</style>

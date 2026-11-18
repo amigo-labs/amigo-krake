@@ -1,0 +1,2 @@
+HTTPS://HOST/A.rar
+Http://host/b.rar

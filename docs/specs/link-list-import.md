@@ -1,5 +1,5 @@
 ---
-status: todo
+status: implemented
 created: 2026-11-17
 size: M
 design: [AGENTS.md "Core-Features" (Queue & Scheduler), AGENTS.md "CLI", AGENTS.md "REST API" (POST /downloads/batch), docs/architecture.md]
@@ -80,63 +80,63 @@ Terms used below:
 
 ### Link list rule
 
-- [ ] AC-01 (always): Krake reads a link list line by line (LF, CRLF and CR
+- [x] AC-01 (always): Krake reads a link list line by line (LF, CRLF and CR
   line endings, a leading UTF-8 byte order mark ignored, bytes that are not
   valid UTF-8 replaced by U+FFFD). For each line with leading and trailing
   whitespace removed: if it starts with `http://` or `https://`
   (case-insensitive), its link is everything up to the first whitespace
   character; if it is empty or starts with `#`, it is skipped and not
   counted; any other line counts as *not recognized*.
-- [ ] AC-02 (always): The links of one list are queued in the order of their
+- [x] AC-02 (always): The links of one list are queued in the order of their
   first appearance, and a link that appears more than once in the list is
   queued once. Two links count as the same when they are equal character by
   character after the rule of AC-01.
-- [ ] AC-03 (always): The web UI and the CLI produce the same links and the
+- [x] AC-03 (always): The web UI and the CLI produce the same links and the
   same *not recognized* count for every case in one shared set of test cases,
   which covers at least: notes after a link, CRLF, CR, a byte order mark,
   invalid UTF-8, comment lines, blank lines, duplicates, uppercase
   `HTTPS://`, U+00A0 and U+FEFF inside a line, a link without host, and a
   line that is not a link.
-- [ ] AC-04 (error): If the part of a link between `://` and the first `/`,
+- [x] AC-04 (error): If the part of a link between `://` and the first `/`,
   `?` or `#` is empty (for example `https://` or `https:///path`), then the
   line counts as *not recognized*. Any other malformed link is left to Krake's
   URL validation and counts as *rejected* (AC-08).
 
 ### Web UI
 
-- [ ] AC-05 (event): When the user drops a file on the web UI that is neither
+- [x] AC-05 (event): When the user drops a file on the web UI that is neither
   `.dlc` nor `.nzb`, then Krake queues the links of that file by the link
   list rule and shows one result toast with the result counts (counts of zero
   are left out). Links that equal the URL of an active download are not sent
   and count as *already queued*.
-- [ ] AC-06 (event): When the user chooses a text file in the add panel, then
+- [x] AC-06 (event): When the user chooses a text file in the add panel, then
   the URL field is replaced by the extracted links, one per line, and the
   panel states how many lines were not recognized; nothing is queued before
   the user submits. If the file yields no link or is larger than 1 MiB, the
   URL field keeps its content and the panel shows the message of AC-09 or
   AC-10 instead.
-- [ ] AC-07 (event): When the user drops plain text (not a file) on the web
+- [x] AC-07 (event): When the user drops plain text (not a file) on the web
   UI outside the add panel, or pastes it while no text field has focus, then
   Krake applies the link list rule and result toast of AC-05. Text pasted
   into the add panel's URL field stays there for review and is queued only on
   submit, by the same link list rule.
-- [ ] AC-08 (error): If Krake rejects some links of a list (for example a
+- [x] AC-08 (error): If Krake rejects some links of a list (for example a
   private address or an invalid URL), then the other links are still queued
   and the result toast names each rejected link with its reason (the first
   five, then "and N more").
-- [ ] AC-09 (error): If a list yields no link, then nothing is sent to the
+- [x] AC-09 (error): If a list yields no link, then nothing is sent to the
   server and the message says that the file (or text) contained no links.
-- [ ] AC-10 (error): If a dropped or chosen file, or dropped or pasted text,
+- [x] AC-10 (error): If a dropped or chosen file, or dropped or pasted text,
   is larger than 1 MiB (its size in bytes as UTF-8, for a file its size on
   disk), then nothing is queued and the message says it is too large and
   names the limit.
-- [ ] AC-11 (event): When the web UI queues a list of any length within the
+- [x] AC-11 (event): When the web UI queues a list of any length within the
   size limit, then every link reaches the server, however many requests that
   takes. If one of those requests fails as a whole (network error, session
   expired, server error), then every link sent before the failure stays
   queued, no further request is sent, and the result toast states the counts
   so far plus how many links were not sent.
-- [ ] AC-12 (always): Every new user-visible string of this spec exists in
+- [x] AC-12 (always): Every new user-visible string of this spec exists in
   English and German.
 
 ### Android share target
@@ -149,20 +149,20 @@ Terms used below:
 
 ### CLI
 
-- [ ] AC-18 (event): When the user runs `krake add --list <file>`, then the
+- [x] AC-18 (event): When the user runs `krake add --list <file>`, then the
   CLI queues the links of the file by the link list rule on the local
   coordinator and prints one line per queued link and a summary with the
   result counts. Links that equal the URL of an active download count as
   *already queued* and create no download.
-- [ ] AC-19 (option): Where the file argument of `--list` is `-`, the CLI
+- [x] AC-19 (option): Where the file argument of `--list` is `-`, the CLI
   reads the list from standard input.
-- [ ] AC-20 (error): If the file of `--list` does not exist, cannot be read
+- [x] AC-20 (error): If the file of `--list` does not exist, cannot be read
   or is larger than 1 MiB (for `-`: more than 1 MiB on standard input), then the CLI prints the path and the reason,
   queues nothing and exits with a non-zero status.
-- [ ] AC-21 (error): The CLI exits with a non-zero status if the list yields
+- [x] AC-21 (error): The CLI exits with a non-zero status if the list yields
   no link or every link was rejected; otherwise (at least one link queued or
   already queued) it exits with status zero.
-- [ ] AC-22 (always): `--list` cannot be combined with a URL, `--nzb` or
+- [x] AC-22 (always): `--list` cannot be combined with a URL, `--nzb` or
   `--dlc` in one call; the CLI refuses that with a usage error.
 
 ## Technical notes
@@ -220,32 +220,41 @@ Terms used below:
 
 <!-- One bullet per open question; empty means: everything settled, spec-build may start -->
 
+## Summary
+
+> Completed: 2026-11-18
+
+- One link list rule (one link per line, first whitespace-separated word, Unicode `White_Space` trim, BOM/CR/CRLF/invalid UTF-8 handling, host check) in Rust (`krake_core::linklist`) and TypeScript (`web-ui/src/lib/linkList.ts`), pinned by 17 shared fixtures in `crates/core/tests/fixtures/link-lists/`.
+- Web UI: dropped text files, dropped or pasted text outside fields and the add panel (file choice and submit) all use the rule; links are queued in chunked `POST /downloads/batch` requests with active-download dedup, a 1 MiB limit and one result toast (rejected links with reasons, "and N more", links not sent after a failed request).
+- CLI: `krake add --list <file|->` queues a link list on the local coordinator with per-link lines, a summary, a 1 MiB limit and exit status by result; `--list` conflicts with a URL, `--nzb` and `--dlc`.
+- The CLI now embeds `locales/en.json` and `de.json`; all new strings exist in English and German.
+
 ## Evidence
 
 | AC    | Test | Status | Commit |
 | ----- | ---- | ------ | ------ |
-| AC-01 |      | open   |        |
-| AC-02 |      | open   |        |
-| AC-03 |      | open   |        |
-| AC-04 |      | open   |        |
-| AC-05 |      | open   |        |
-| AC-06 |      | open   |        |
-| AC-07 |      | open   |        |
-| AC-08 |      | open   |        |
-| AC-09 |      | open   |        |
-| AC-10 |      | open   |        |
-| AC-11 |      | open   |        |
-| AC-12 |      | open   |        |
+| AC-01 | `crates/core/tests/link_list_fixtures.rs::link_list_fixtures`, `web-ui/test/linkList.test.ts` | verified | 243a24b |
+| AC-02 | `crates/core/tests/link_list_fixtures.rs::link_list_fixtures`, `web-ui/test/linkList.test.ts` | verified | 243a24b |
+| AC-03 | `crates/core/tests/link_list_fixtures.rs::link_list_fixtures`, `web-ui/test/linkList.test.ts` | verified | 243a24b |
+| AC-04 | `crates/core/tests/link_list_fixtures.rs::link_list_fixtures`, `web-ui/test/linkList.test.ts` | verified | 243a24b |
+| AC-05 | `web-ui/test/linkListImport.test.ts` (queueLinkList: active downloads not sent; resultToast: zero counts left out; component wiring (AC-05, AC-06, AC-07, AC-09, AC-10): routes dropped files) + `web-ui/test/linkListActions.test.ts` (activeDownloads; importLinkList; importLinkListFile) | verified | ff72157 |
+| AC-06 | `web-ui/test/linkListImport.test.ts` (component wiring (AC-05, AC-06, AC-07, AC-09, AC-10): fills the field / keeps the field and names the problem) | verified | ff72157 |
+| AC-07 | `web-ui/test/linkList.test.ts` + `web-ui/test/linkListImport.test.ts` (component wiring (AC-05, AC-06, AC-07, AC-09, AC-10): leaves drops and pastes into text fields alone) + `web-ui/test/linkListActions.test.ts` (text drops and pastes) | verified | ff72157 |
+| AC-08 | `web-ui/test/linkListImport.test.ts` (keeps the other links when some are rejected; first five, then and N more) + `web-ui/test/linkListImport.test.ts` (keeps its lines and stays until closed) + `web-ui/test/linkListActions.test.ts` (shows rejected links on several lines until the toast is closed) + `web-ui/test/toast.test.ts` | verified | ff72157 |
+| AC-09 | `web-ui/test/linkListImport.test.ts` (reports a list without links; component wiring (AC-05, AC-06, AC-07, AC-09, AC-10): no-links message) + `web-ui/test/linkListActions.test.ts` (sends nothing and says so for a list without links) | verified | ff72157 |
+| AC-10 | `web-ui/test/linkListImport.test.ts` (refuses more than 1 MiB, UTF-8 bytes, file size; component wiring (AC-05, AC-06, AC-07, AC-09, AC-10): names the limit) + `web-ui/test/linkListActions.test.ts` (names the limit; refuses a file over 1 MiB without reading it) | verified | ff72157 |
+| AC-11 | `web-ui/test/linkListImport.test.ts` (several requests, body limit, stops at a failed request) + `web-ui/test/linkListImport.test.ts` (has a title even when nothing was sent) | verified | ff72157 |
+| AC-12 | `web-ui/test/linkListImport.test.ts` (link list strings) + `web-ui/test/i18nKeys.test.ts` + `crates/cli/src/main.rs::link_list_tests::link_list_keys_exist_in_english_and_german` + `crates/cli/tests/add_list.rs::messages_follow_the_system_language` | verified | ff72157 |
 | AC-13 |      | dropped |        |
 | AC-14 |      | dropped |        |
 | AC-15 |      | dropped |        |
 | AC-16 |      | dropped |        |
 | AC-17 |      | dropped |        |
-| AC-18 |      | open   |        |
-| AC-19 |      | open   |        |
-| AC-20 |      | open   |        |
-| AC-21 |      | open   |        |
-| AC-22 |      | open   |        |
+| AC-18 | `crates/cli/src/main.rs::link_list_tests::add_link_list_queues_in_order_and_counts`, `::add_link_list_counts_active_downloads_as_already_queued` | verified | 553b050 |
+| AC-19 | `crates/cli/tests/add_list.rs::list_from_stdin_is_queued` | verified | 553b050 |
+| AC-20 | `crates/cli/src/main.rs::link_list_tests::read_link_list_names_path_and_reason`, `::read_link_list_refuses_more_than_one_mib`, `crates/cli/tests/add_list.rs::missing_file_fails_with_path`, `::oversized_stdin_is_refused`, `::oversized_list_with_links_queues_nothing` (reason asserted in both path tests) | verified | 553b050 |
+| AC-21 | `crates/cli/tests/add_list.rs::list_without_links_fails`, `::every_link_rejected_fails`, `::list_from_stdin_is_queued`, `::only_already_queued_links_exit_zero` | verified | 553b050 |
+| AC-22 | `crates/cli/src/main.rs::link_list_tests::list_conflicts_with_url_nzb_and_dlc` | verified | 553b050 |
 
 ## Decisions
 
@@ -258,3 +267,44 @@ Terms used below:
   folder — chosen by the user.
 - 2026-11-17: Revision — Android share target (AC-13 to AC-17) dropped by
   the user; Android needs an HTTPS-installed PWA for it.
+- 2026-11-18 (spec-build): The CLI rejects a link that `reqwest::Url` cannot
+  parse (for example `http://[bad/x`) before queueing it, because the local
+  coordinator accepts any string and AC-21 needs a reachable "rejected" case.
+- 2026-11-18 (spec-build): AC-22's test was green as soon as the clap
+  `conflicts_with_all` rule existed; the rule and the test arrived in the same
+  step, so there was no separate red run for it.
+- 2026-11-18 (spec-build): The repository has no browser test suite and
+  Playwright is not a dependency (adding one is a stopping point), so the
+  logic of AC-05 to AC-11 is unit-tested in `web-ui/test/linkListImport.test.ts`
+  and the component wiring (drop of a file and of text, paste with no field
+  focused, file choice in the add panel incl. no-links and too-large, submit)
+  was checked once with a throwaway Playwright script against a local
+  `krake-server`: every case behaved as specified.
+- 2026-11-18 (spec-build): Text dropped or pasted into an input, textarea or
+  editable element is left to that element (the add panel's field queues it
+  on submit); only drops and pastes elsewhere import directly.
+- 2026-11-18 (spec-build): The add panel's submit now uses the link list rule
+  too, so `magnet:` and `ftp:` lines, accepted before, count as not
+  recognized; Krake downloads neither (out of scope of this spec).
+- 2026-11-18 (spec-build, round 2): The acceptance check found the component
+  wiring untested. Its decisions (routing a dropped file, leaving text fields
+  alone, the add panel's state after a file choice, the problem messages) now
+  live in pure functions in `web-ui/src/lib/linkListImport.ts` with unit
+  tests; the Svelte components only call them.
+- 2026-11-18 (spec-build, round 2): AC-12 covers the CLI too. The CLI's
+  `--list` messages are in `locales/en.json` / `de.json`, and the CLI now
+  embeds both locale files (it read `./locales` from the working directory,
+  which exists only inside the repository, so it showed raw keys elsewhere).
+  `docker/Dockerfile` copies `locales/` into the Rust build stage for that.
+- 2026-11-18 (spec-build, round 3): The glue between the stores, the API and
+  the toasts (`linkListActions.ts`) is tested with vitest mocks of the API and
+  the toasts; the text-drop and paste decisions moved into
+  `shouldImportTextDrop` / `pastedText`. The glue tests were green at once
+  because the glue already existed; removing the active-status filter turns
+  two of them red, so they guard it.
+- 2026-11-18 (spec-build, round 3 finding): Toasts clamped their message to
+  two lines and collapsed line breaks, so all but the first rejected link,
+  "and N more" and the "not sent" line were invisible. Toasts gained a
+  `multiline` option (line breaks kept, no clamp); a link list toast that
+  lists links stays until the user closes it. Checked once in a browser with
+  seven rejected links: all five lines and "und 2 weitere" show.

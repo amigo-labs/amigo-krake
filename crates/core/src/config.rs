@@ -138,6 +138,58 @@ pub struct ServerConfig {
     /// spoofing on directly-exposed servers.
     #[serde(default)]
     pub trust_proxy: bool,
+    /// Who must log in: `always` (default), `private` (not requests from
+    /// private networks), `never` (only with a loopback bind). Spec
+    /// `local-auth-bypass`; `KRAKE_AUTH_MODE` overrides it.
+    #[serde(default = "default_auth_mode")]
+    pub auth_mode: String,
+    /// Only in API responses: the mode in effect comes from
+    /// `KRAKE_AUTH_MODE`, so it cannot be changed through the API. Never
+    /// read from a file or a request.
+    #[serde(
+        default,
+        skip_deserializing,
+        skip_serializing_if = "std::ops::Not::not"
+    )]
+    pub auth_mode_from_env: bool,
+}
+
+fn default_auth_mode() -> String {
+    AuthMode::Always.as_str().into()
+}
+
+/// Who must log in (spec `local-auth-bypass`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthMode {
+    /// Every request needs a login.
+    Always,
+    /// Requests from private networks need none.
+    Private,
+    /// No request needs one; only allowed with a loopback bind.
+    Never,
+}
+
+impl AuthMode {
+    /// The values `server.auth_mode` and `KRAKE_AUTH_MODE` accept.
+    pub const ALLOWED: &'static str = "always, private, never";
+
+    /// Parse a mode, ignoring case and surrounding whitespace.
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "always" => Some(Self::Always),
+            "private" => Some(Self::Private),
+            "never" => Some(Self::Never),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Always => "always",
+            Self::Private => "private",
+            Self::Never => "never",
+        }
+    }
 }
 
 fn default_session_ttl_secs() -> i64 {
@@ -145,9 +197,9 @@ fn default_session_ttl_secs() -> i64 {
 }
 
 impl ServerConfig {
-    /// `true` if the bind address is a loopback host (127.0.0.1 / ::1 /
-    /// localhost). On loopback we skip setup entirely — a Tauri desktop,
-    /// a local `krake-server` run, or a dev run are trusted by construction.
+    /// `true` if the bind address is a loopback host (any loopback IP
+    /// literal such as 127.0.0.1 or ::1, or `localhost`). On loopback the
+    /// setup wizard is skipped, and only there may `auth_mode` be `never`.
     pub fn is_bind_loopback(&self) -> bool {
         let host = self
             .bind
@@ -156,7 +208,10 @@ impl ServerConfig {
             .unwrap_or(self.bind.as_str())
             .trim_start_matches('[')
             .trim_end_matches(']');
-        matches!(host, "127.0.0.1" | "::1" | "localhost")
+        host.eq_ignore_ascii_case("localhost")
+            || host
+                .parse::<std::net::IpAddr>()
+                .is_ok_and(|ip| ip.is_loopback())
     }
 }
 
@@ -171,6 +226,8 @@ impl Default for ServerConfig {
             admin_password_hash: None,
             session_ttl_secs: default_session_ttl_secs(),
             trust_proxy: false,
+            auth_mode: default_auth_mode(),
+            auth_mode_from_env: false,
         }
     }
 }
@@ -504,6 +561,44 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn auth_mode_from_env_is_never_read_from_the_file() {
+        // Spec local-auth-bypass, AC-09: only the server sets it.
+        let server: ServerConfig = toml::from_str(
+            "bind = \"0.0.0.0:1516\"\nauth_mode = \"always\"\nauth_mode_from_env = true\n",
+        )
+        .unwrap();
+        assert_eq!(server.auth_mode, "always");
+        assert!(!server.auth_mode_from_env);
+    }
+
+    #[test]
+    fn loopback_binds_are_any_loopback_literal_or_localhost() {
+        // Spec local-auth-bypass, "Loopback bind": the UI and the server agree.
+        let bind = |b: &str| ServerConfig {
+            bind: b.into(),
+            ..ServerConfig::default()
+        };
+        for b in [
+            "127.0.0.1:1516",
+            "127.0.0.5:80",
+            "[::1]:1516",
+            "localhost:1516",
+            "LOCALHOST:1",
+        ] {
+            assert!(bind(b).is_bind_loopback(), "{b}");
+        }
+        for b in [
+            "0.0.0.0:1516",
+            "[::]:1516",
+            "192.168.1.10:1516",
+            "krake.lan:1516",
+            "128.0.0.1:1",
+        ] {
+            assert!(!bind(b).is_bind_loopback(), "{b}");
+        }
+    }
 
     #[test]
     fn webhook_blank_secret_is_regenerated() {

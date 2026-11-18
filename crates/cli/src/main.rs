@@ -80,7 +80,7 @@ enum Commands {
         #[arg(short, long, default_value_t = 0)]
         chunks: u32,
     },
-    /// Add a download to the queue (URL, NZB, or DLC)
+    /// Add a download to the queue (URL, NZB, DLC, or a link list)
     Add {
         /// URL to download
         url: Option<String>,
@@ -90,6 +90,9 @@ enum Commands {
         /// Import DLC container
         #[arg(long)]
         dlc: Option<String>,
+        /// Queue every link of a text file, one link per line (`-` reads stdin)
+        #[arg(long, value_name = "FILE", conflicts_with_all = ["url", "nzb", "dlc"])]
+        list: Option<String>,
     },
     /// Export downloads as DLC container
     ExportDlc {
@@ -423,6 +426,124 @@ fn init_coordinator() -> anyhow::Result<Arc<Coordinator>> {
         PathBuf::from(&config.temp_dir),
     )?;
     Ok(Arc::new(Coordinator::new(config, storage)))
+}
+
+/// The CLI's locales, built into the binary.
+const LOCALE_EN: &str = include_str!("../../../locales/en.json");
+const LOCALE_DE: &str = include_str!("../../../locales/de.json");
+
+/// Largest link list `krake add --list` reads (spec `link-list-import`, AC-20).
+const MAX_LINK_LIST_BYTES: u64 = 1024 * 1024;
+
+/// Read a link list from a file, or from standard input for `-`. Errors name
+/// the path and the reason.
+fn read_link_list(path: &str) -> anyhow::Result<Vec<u8>> {
+    use std::io::Read;
+    let source: Box<dyn Read> = if path == "-" {
+        Box::new(std::io::stdin().lock())
+    } else {
+        Box::new(std::fs::File::open(path).map_err(|e| anyhow::anyhow!("{path}: {e}"))?)
+    };
+    let mut data = Vec::new();
+    source
+        .take(MAX_LINK_LIST_BYTES + 1)
+        .read_to_end(&mut data)
+        .map_err(|e| anyhow::anyhow!("{path}: {e}"))?;
+    if data.len() as u64 > MAX_LINK_LIST_BYTES {
+        anyhow::bail!(
+            "{}",
+            krake_core::i18n::t_fmt("linklist.cli.too_large", &[("path", path)])
+        );
+    }
+    Ok(data)
+}
+
+/// Result counts of one `krake add --list` run.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct LinkListSummary {
+    queued: usize,
+    already_queued: usize,
+    rejected: usize,
+    not_recognized: usize,
+}
+
+/// Queue the links of a parsed link list on the local coordinator, printing
+/// one line per link and a summary.
+async fn add_link_list(
+    coord: &Coordinator,
+    list: &krake_core::linklist::LinkList,
+    out: &mut impl std::io::Write,
+) -> anyhow::Result<LinkListSummary> {
+    use krake_core::i18n::t_fmt;
+    let mut summary = LinkListSummary {
+        not_recognized: list.not_recognized,
+        ..LinkListSummary::default()
+    };
+    for link in &list.links {
+        if let Err(e) = reqwest::Url::parse(link) {
+            let reason = e.to_string();
+            writeln!(
+                out,
+                "{}",
+                t_fmt(
+                    "linklist.cli.rejected",
+                    &[("link", link), ("reason", &reason)]
+                )
+            )?;
+            summary.rejected += 1;
+            continue;
+        }
+        if coord
+            .storage()
+            .find_active_download_by_url(link)
+            .await?
+            .is_some()
+        {
+            writeln!(
+                out,
+                "{}",
+                t_fmt("linklist.cli.already_queued", &[("link", link)])
+            )?;
+            summary.already_queued += 1;
+            continue;
+        }
+        match coord.add_download(link, None).await {
+            Ok(id) => {
+                writeln!(
+                    out,
+                    "{}",
+                    t_fmt("linklist.cli.queued", &[("link", link), ("id", &id)])
+                )?;
+                summary.queued += 1;
+            }
+            Err(e) => {
+                let reason = e.to_string();
+                writeln!(
+                    out,
+                    "{}",
+                    t_fmt(
+                        "linklist.cli.rejected",
+                        &[("link", link), ("reason", &reason)]
+                    )
+                )?;
+                summary.rejected += 1;
+            }
+        }
+    }
+    writeln!(
+        out,
+        "{}",
+        t_fmt(
+            "linklist.cli.summary",
+            &[
+                ("queued", &summary.queued.to_string()),
+                ("already", &summary.already_queued.to_string()),
+                ("rejected", &summary.rejected.to_string()),
+                ("not_recognized", &summary.not_recognized.to_string()),
+            ],
+        )
+    )?;
+    Ok(summary)
 }
 
 /// Format bytes as human-readable string.
@@ -827,7 +948,10 @@ async fn main() -> anyhow::Result<()> {
 
     // Initialize i18n — detect system language, load locale
     let lang = krake_core::i18n::detect_system_lang();
-    krake_core::i18n::init(&lang, std::path::Path::new("locales"));
+    // Embedded, so messages are translated wherever the binary runs (it used
+    // to read `./locales`, which only exists inside the repository).
+    let lang_json = if lang == "de" { LOCALE_DE } else { LOCALE_EN };
+    krake_core::i18n::init_from_str(&lang, lang_json, LOCALE_EN);
 
     // Resolve output mode (--no-color overrides to plain)
     let mode = if cli.no_color || std::env::var("NO_COLOR").is_ok() {
@@ -857,7 +981,31 @@ async fn main() -> anyhow::Result<()> {
             run_direct_downloads(&urls, &output, chunks, &tui).await?;
         }
 
-        Commands::Add { url, nzb, dlc } => {
+        Commands::Add {
+            url,
+            nzb,
+            dlc,
+            list,
+        } => {
+            if let Some(path) = list {
+                let list = krake_core::linklist::parse(&read_link_list(&path)?);
+                if list.links.is_empty() {
+                    eprintln!(
+                        "{}",
+                        krake_core::i18n::t_fmt(
+                            "linklist.cli.no_links",
+                            &[("path", &path), ("count", &list.not_recognized.to_string())],
+                        )
+                    );
+                    std::process::exit(1);
+                }
+                let coord = init_coordinator()?;
+                let summary = add_link_list(&coord, &list, &mut std::io::stdout()).await?;
+                if summary.queued + summary.already_queued == 0 {
+                    std::process::exit(1);
+                }
+                return Ok(());
+            }
             let coord = init_coordinator()?;
             if let Some(url) = url {
                 let id = coord.add_download(&url, None).await?;
@@ -1547,4 +1695,156 @@ fn alias_from_url(url: &str) -> String {
         .trim_start_matches("http://")
         .trim_start_matches("https://");
     s.split(&['/', ':'][..]).next().unwrap_or(s).to_string()
+}
+
+#[cfg(test)]
+mod link_list_tests {
+    use super::*;
+
+    /// Message keys of `krake add --list` (spec `link-list-import`, AC-12).
+    const LINK_LIST_KEYS: &[&str] = &[
+        "linklist.cli.queued",
+        "linklist.cli.already_queued",
+        "linklist.cli.rejected",
+        "linklist.cli.summary",
+        "linklist.cli.no_links",
+        "linklist.cli.too_large",
+    ];
+
+    fn memory_coordinator() -> Arc<Coordinator> {
+        english();
+        let tmp = std::env::temp_dir().join(format!("krake-cli-test-{}", std::process::id()));
+        let mut storage = Storage::open_memory().expect("in-memory storage");
+        storage.download_dir = tmp.clone();
+        storage.temp_dir = tmp.join(".tmp");
+        Arc::new(Coordinator::new(Config::default(), storage))
+    }
+
+    #[tokio::test]
+    async fn add_link_list_queues_in_order_and_counts() {
+        // AC-02, AC-18: links are queued in list order, one line per link,
+        // and the summary carries every result count.
+        let coord = memory_coordinator();
+        let list = krake_core::linklist::parse(
+            b"https://host.example/a.rar note\nnot a link\nhttp://[bad/x\nhttps://host.example/b.rar\n",
+        );
+        let mut out = Vec::new();
+        let summary = add_link_list(&coord, &list, &mut out).await.unwrap();
+        assert_eq!(
+            summary,
+            LinkListSummary {
+                queued: 2,
+                already_queued: 0,
+                rejected: 1,
+                not_recognized: 1,
+            }
+        );
+        let urls: Vec<String> = coord
+            .storage()
+            .list_downloads()
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|d| d.url)
+            .collect();
+        assert_eq!(urls.len(), 2);
+        assert!(urls.contains(&"https://host.example/a.rar".to_string()));
+        let text = String::from_utf8(out).unwrap();
+        let a = text.find("https://host.example/a.rar").expect("a printed");
+        let b = text.find("https://host.example/b.rar").expect("b printed");
+        assert!(a < b, "links must be printed in list order:\n{text}");
+        assert!(
+            text.contains("http://[bad/x"),
+            "rejected link must be named:\n{text}"
+        );
+        assert!(
+            text.contains("queued 2")
+                && text.contains("rejected 1")
+                && text.contains("not recognized 1"),
+            "summary missing:\n{text}"
+        );
+    }
+
+    #[tokio::test]
+    async fn add_link_list_counts_active_downloads_as_already_queued() {
+        // AC-18: a link equal to an active download creates no download.
+        let coord = memory_coordinator();
+        let id = coord
+            .add_download("https://host.example/a.rar", None)
+            .await
+            .unwrap();
+        coord.pause(&id).await.unwrap();
+        let list = krake_core::linklist::parse(b"https://host.example/a.rar\n");
+        let summary = add_link_list(&coord, &list, &mut Vec::new()).await.unwrap();
+        assert_eq!(summary.already_queued, 1);
+        assert_eq!(summary.queued, 0);
+        assert_eq!(coord.storage().list_downloads().await.unwrap().len(), 1);
+    }
+
+    /// Messages in English for assertions (set once per test binary).
+    fn english() {
+        krake_core::i18n::init_from_str("en", LOCALE_EN, LOCALE_EN);
+    }
+
+    #[test]
+    fn read_link_list_names_path_and_reason() {
+        // AC-20: a missing file is reported with its path and the reason.
+        let err = read_link_list("/nonexistent/links.txt")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("/nonexistent/links.txt"), "{err}");
+        let reason = std::fs::File::open("/nonexistent/links.txt")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains(&reason),
+            "reason {reason:?} missing in {err:?}"
+        );
+    }
+
+    #[test]
+    fn read_link_list_refuses_more_than_one_mib() {
+        // AC-20: lists over 1 MiB are refused.
+        english();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("big.txt");
+        std::fs::write(&path, vec![b'a'; 1024 * 1024 + 1]).unwrap();
+        let err = read_link_list(path.to_str().unwrap())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("1 MiB"), "{err}");
+    }
+
+    #[test]
+    fn link_list_keys_exist_in_english_and_german() {
+        // AC-12: every message key of `krake add --list` is in both locales.
+        for (name, json) in [("en", LOCALE_EN), ("de", LOCALE_DE)] {
+            let map: std::collections::HashMap<String, String> =
+                serde_json::from_str(json).expect("locale json");
+            for key in LINK_LIST_KEYS {
+                assert!(map.contains_key(*key), "{name}: missing {key}");
+            }
+        }
+    }
+
+    #[test]
+    fn list_conflicts_with_url_nzb_and_dlc() {
+        // AC-22: --list cannot be combined with another input.
+        for extra in [
+            vec!["https://host.example/x"],
+            vec!["--nzb", "a.nzb"],
+            vec!["--dlc", "a.dlc"],
+        ] {
+            let mut args = vec!["krake", "add", "--list", "links.txt"];
+            args.extend(extra.iter().copied());
+            let Err(err) = Cli::try_parse_from(&args) else {
+                panic!("{args:?} must be refused");
+            };
+            assert_eq!(
+                err.kind(),
+                clap::error::ErrorKind::ArgumentConflict,
+                "{args:?}"
+            );
+        }
+    }
 }

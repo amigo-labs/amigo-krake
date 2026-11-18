@@ -1,0 +1,6 @@
+Part 1: https://host/a.rar
+magnet:?xt=urn:btih:abc
+ftp://host/a.rar
+https:/host/a.rar
+httpsx://host
+hello

@@ -3,6 +3,7 @@
   import { features } from "../lib/stores";
   import { getConfig, putConfig, getWebhooks, type AppConfig } from "../lib/api";
   import { addToast } from "../lib/toast";
+  import { saveOrRestore } from "../lib/settings";
   import { locale, tr, type Locale } from "../lib/i18n";
   import Icon from "@amigo-labs/krake-ui/components/Icon.svelte";
 
@@ -13,6 +14,7 @@
   import SettingsDownloads from "../components/settings/SettingsDownloads.svelte";
   import SettingsWebhooks from "../components/settings/SettingsWebhooks.svelte";
   import SettingsRssFeeds from "../components/settings/SettingsRssFeeds.svelte";
+  import SettingsSecurity from "../components/settings/SettingsSecurity.svelte";
   import SkeletonCard from "../components/SkeletonCard.svelte";
 
   let config = $state<AppConfig | null>(null);
@@ -29,13 +31,11 @@
 
   async function saveConfig() {
     if (!config) return;
-    try {
-      config = await putConfig(config);
-      features.set(config.features);
-      addToast("success", tr($locale, "settings.saved"));
-    } catch {
-      addToast("error", tr($locale, "settings.save_failed"));
-    }
+    const result = await saveOrRestore(config, putConfig, getConfig);
+    config = result.config;
+    features.set(result.config.features);
+    if (result.ok) addToast("success", tr($locale, "settings.saved"));
+    else addToast("error", tr($locale, "settings.save_failed"), result.error);
   }
 </script>
 
@@ -52,6 +52,7 @@
   <SettingsAppearance />
   <SettingsDownloads {config} onsave={saveConfig} />
   <SettingsWebhooks bind:webhooks />
+  <SettingsSecurity {config} onsave={saveConfig} />
 
   <!-- Language -->
   <section>
