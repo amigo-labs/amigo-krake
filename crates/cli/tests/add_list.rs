@@ -61,6 +61,68 @@ fn missing_file_fails_with_path() {
     let out = krake(dir.path(), &["add", "--list", "nope.txt"], None);
     assert!(!out.status.success());
     assert!(text(&out).contains("nope.txt"), "{}", text(&out));
+    let reason = std::fs::File::open(dir.path().join("nope.txt"))
+        .unwrap_err()
+        .to_string();
+    assert!(
+        text(&out).contains(&reason),
+        "reason {reason:?} missing: {}",
+        text(&out)
+    );
+}
+
+/// The URLs `krake list --mode json` reports in `dir`.
+fn listed_urls(dir: &std::path::Path) -> Vec<String> {
+    // Without `NO_COLOR`, which would force plain output over `--mode json`.
+    let out = Command::new(env!("CARGO_BIN_EXE_krake"))
+        .args(["--mode", "json", "list"])
+        .current_dir(dir)
+        .env("KRAKE_CONFIG_DIR", dir)
+        .env_remove("NO_COLOR")
+        .output()
+        .expect("run krake list");
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout)
+        .unwrap_or_else(|e| panic!("list output is not JSON ({e}): {}", text(&out)));
+    json["downloads"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| d["url"].as_str().unwrap().to_string())
+        .collect()
+}
+
+#[test]
+fn oversized_list_with_links_queues_nothing() {
+    // AC-20: a list over 1 MiB is refused as a whole, links and all.
+    let dir = tempfile::tempdir().unwrap();
+    let line = b"https://host.example/a.rar\n";
+    let big: Vec<u8> = line
+        .iter()
+        .copied()
+        .cycle()
+        .take(1024 * 1024 + line.len())
+        .collect();
+    let out = krake(dir.path(), &["add", "--list", "-"], Some(&big));
+    assert!(!out.status.success(), "{}", text(&out));
+    assert!(listed_urls(dir.path()).is_empty(), "nothing may be queued");
+}
+
+#[test]
+fn only_already_queued_links_exit_zero() {
+    // AC-21: a list whose links are all queued already is not an error.
+    let dir = tempfile::tempdir().unwrap();
+    let list = b"https://host.example/a.rar\n";
+    let first = krake(dir.path(), &["add", "--list", "-"], Some(list));
+    assert!(first.status.success(), "{}", text(&first));
+    assert_eq!(listed_urls(dir.path()), ["https://host.example/a.rar"]);
+    let second = krake(dir.path(), &["add", "--list", "-"], Some(list));
+    assert!(second.status.success(), "{}", text(&second));
+    assert!(
+        text(&second).contains("already queued 1"),
+        "{}",
+        text(&second)
+    );
+    assert!(text(&second).contains("queued 0"), "{}", text(&second));
 }
 
 #[test]

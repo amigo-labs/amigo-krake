@@ -243,8 +243,8 @@ Terms used below:
 | AC-17 |      | dropped |        |
 | AC-18 | `crates/cli/src/main.rs::link_list_tests::add_link_list_queues_in_order_and_counts`, `::add_link_list_counts_active_downloads_as_already_queued` | built |        |
 | AC-19 | `crates/cli/tests/add_list.rs::list_from_stdin_is_queued` | built |        |
-| AC-20 | `crates/cli/src/main.rs::link_list_tests::read_link_list_names_path_and_reason`, `::read_link_list_refuses_more_than_one_mib`, `crates/cli/tests/add_list.rs::missing_file_fails_with_path`, `::oversized_stdin_is_refused` | built |        |
-| AC-21 | `crates/cli/tests/add_list.rs::list_without_links_fails`, `::every_link_rejected_fails`, `::list_from_stdin_is_queued` | built |        |
+| AC-20 | `crates/cli/src/main.rs::link_list_tests::read_link_list_names_path_and_reason`, `::read_link_list_refuses_more_than_one_mib`, `crates/cli/tests/add_list.rs::missing_file_fails_with_path`, `::oversized_stdin_is_refused`, `::oversized_list_with_links_queues_nothing` (reason asserted in both path tests) | built |        |
+| AC-21 | `crates/cli/tests/add_list.rs::list_without_links_fails`, `::every_link_rejected_fails`, `::list_from_stdin_is_queued`, `::only_already_queued_links_exit_zero` | built |        |
 | AC-22 | `crates/cli/src/main.rs::link_list_tests::list_conflicts_with_url_nzb_and_dlc` | built |        |
 
 ## Decisions

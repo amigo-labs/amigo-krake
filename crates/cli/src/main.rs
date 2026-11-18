@@ -1793,6 +1793,13 @@ mod link_list_tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("/nonexistent/links.txt"), "{err}");
+        let reason = std::fs::File::open("/nonexistent/links.txt")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains(&reason),
+            "reason {reason:?} missing in {err:?}"
+        );
     }
 
     #[test]
