@@ -326,18 +326,57 @@ fn nzb_name(filename: &str) -> &str {
     }
 }
 
-/// The category `append` stored with a download; empty when it has none,
-/// or when only its archived history entry is left.
-async fn category_of(coordinator: &Arc<Coordinator>, id: &str) -> String {
-    coordinator
-        .storage()
-        .get_download_metadata(id)
-        .await
-        .ok()
-        .flatten()
+/// What a download recorded about itself (category, Usenet health and
+/// checks): its metadata while it is listed, else its history entry's.
+async fn info_of(coordinator: &Arc<Coordinator>, id: &str) -> Value {
+    let storage = coordinator.storage();
+    let metadata = match storage.get_download_metadata(id).await {
+        Ok(Some(m)) => Some(m),
+        _ => storage.get_history_metadata(id).await.ok().flatten(),
+    };
+    metadata
         .and_then(|m| serde_json::from_str::<Value>(&m).ok())
-        .and_then(|v| v.get("category")?.as_str().map(String::from))
         .unwrap_or_default()
+}
+
+/// The category stored with a download; empty when it has none.
+fn category(info: &Value) -> &str {
+    info["category"].as_str().unwrap_or_default()
+}
+
+/// NZBGet's `Status`, `ParStatus`, `UnpackStatus` and `MoveStatus` of a
+/// finished download. A broken release reads `FAILURE/HEALTH`,
+/// `FAILURE/PAR` or `FAILURE/UNPACK`; a failure on this machine (disk full,
+/// server unreachable) reads `FAILURE/NONE`, so a client does not blame
+/// the release.
+fn history_status(status: &str, info: &Value) -> [&'static str; 4] {
+    let stage = |key: &str, default: &'static str| match info[key].as_str() {
+        Some("SUCCESS") => "SUCCESS",
+        Some("FAILURE") => "FAILURE",
+        Some("NONE") => "NONE",
+        _ => default,
+    };
+    if status == "completed" {
+        // Downloads finished before the checks were recorded read SUCCESS.
+        return [
+            "SUCCESS/ALL",
+            stage("par_status", "SUCCESS"),
+            stage("unpack_status", "SUCCESS"),
+            "SUCCESS",
+        ];
+    }
+    let total = match info["failure"].as_str() {
+        Some("health") => "FAILURE/HEALTH",
+        Some("par") => "FAILURE/PAR",
+        Some("unpack") => "FAILURE/UNPACK",
+        _ => "FAILURE/NONE",
+    };
+    [
+        total,
+        stage("par_status", "NONE"),
+        stage("unpack_status", "NONE"),
+        "NONE",
+    ]
 }
 
 async fn handle_listgroups(coordinator: &Arc<Coordinator>) -> RpcResult {
@@ -352,7 +391,7 @@ async fn handle_listgroups(coordinator: &Arc<Coordinator>) -> RpcResult {
         .iter()
         .filter(|r| r.status != "completed" && r.status != "failed")
     {
-        let category = category_of(coordinator, &r.id).await;
+        let info = info_of(coordinator, &r.id).await;
         groups.push({
             let filesize = r.filesize.unwrap_or(0);
             let downloaded = r.bytes_downloaded;
@@ -375,7 +414,7 @@ async fn handle_listgroups(coordinator: &Arc<Coordinator>) -> RpcResult {
                 "URL": r.url,
                 "DestDir": r.download_dir.as_deref().unwrap_or("downloads"),
                 "FinalDir": "",
-                "Category": category,
+                "Category": category(&info),
                 "FileSizeLo": (filesize & 0xFFFFFFFF) as u32,
                 "FileSizeHi": (filesize >> 32) as u32,
                 "FileSizeMB": filesize / (1024 * 1024),
@@ -433,12 +472,13 @@ async fn handle_history(coordinator: &Arc<Coordinator>) -> RpcResult {
     let rows = history_entries(completed, failed, history_rows);
     let mut items = Vec::new();
     for r in &rows {
-        let category = category_of(coordinator, &r.id).await;
+        let info = info_of(coordinator, &r.id).await;
         items.push({
             let filesize = r.filesize.unwrap_or(0);
             let downloaded = r.bytes_downloaded;
             let nzbid = id_to_nzbid(&r.id);
-            let is_success = r.status == "completed";
+            let [status, par_status, unpack_status, move_status] = history_status(&r.status, &info);
+            let count = |key: &str, default: u64| info[key].as_u64().unwrap_or(default);
 
             let mut item = json!({
                 "NZBID": nzbid,
@@ -449,27 +489,27 @@ async fn handle_history(coordinator: &Arc<Coordinator>) -> RpcResult {
                 "URL": r.url,
                 "DestDir": r.download_dir.as_deref().unwrap_or("downloads"),
                 "FinalDir": r.download_dir.as_deref().unwrap_or("downloads"),
-                "Category": category,
+                "Category": category(&info),
                 "FileSizeLo": (filesize & 0xFFFFFFFF) as u32,
                 "FileSizeHi": (filesize >> 32) as u32,
                 "FileSizeMB": filesize / (1024 * 1024),
                 "DownloadedSizeLo": (downloaded & 0xFFFFFFFF) as u32,
                 "DownloadedSizeHi": (downloaded >> 32) as u32,
                 "DownloadedSizeMB": downloaded / (1024 * 1024),
-                "Status": if is_success { "SUCCESS/ALL" } else { "FAILURE/NONE" },
-                "ParStatus": if is_success { "SUCCESS" } else { "NONE" },
+                "Status": status,
+                "ParStatus": par_status,
                 "ExParStatus": "RECIPIENT",
-                "UnpackStatus": if is_success { "SUCCESS" } else { "NONE" },
-                "MoveStatus": if is_success { "SUCCESS" } else { "NONE" },
+                "UnpackStatus": unpack_status,
+                "MoveStatus": move_status,
                 "ScriptStatus": "NONE",
                 "DeleteStatus": "NONE",
                 "MarkStatus": "NONE",
                 "UrlStatus": "NONE",
-                "TotalArticles": 0,
-                "SuccessArticles": 0,
-                "FailedArticles": 0,
-                "Health": 1000,
-                "CriticalHealth": 1000,
+                "TotalArticles": count("total_articles", 0),
+                "SuccessArticles": count("success_articles", 0),
+                "FailedArticles": count("failed_articles", 0),
+                "Health": count("health", 1000),
+                "CriticalHealth": count("critical_health", 1000),
                 "DupeKey": "",
                 "DupeScore": 0,
                 "DupeMode": "SCORE",
@@ -1064,6 +1104,115 @@ mod tests {
         assert_eq!(nzb_name("Release.Name.NZB"), "Release.Name");
         assert_eq!(nzb_name("Release.Name"), "Release.Name");
         assert_eq!(nzb_name(".nzb"), ".nzb");
+    }
+
+    /// Mark a queued download as finished the way the coordinator does,
+    /// with what it records about a Usenet transfer.
+    async fn finish(coordinator: &Arc<Coordinator>, id: &str, status: QueueStatus, result: Value) {
+        let storage = coordinator.storage();
+        let mut metadata: Value =
+            serde_json::from_str(&storage.get_download_metadata(id).await.unwrap().unwrap())
+                .unwrap();
+        for (k, v) in result.as_object().unwrap() {
+            metadata[k] = v.clone();
+        }
+        storage
+            .update_download_metadata(id, &metadata.to_string())
+            .await
+            .unwrap();
+        storage.update_download_status(id, status).await.unwrap();
+        storage.record_history(id).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn history_reports_why_a_usenet_download_failed() {
+        let cases = [
+            (
+                json!({"failure": "health", "health": 400, "critical_health": 950,
+                       "total_articles": 10, "success_articles": 4, "failed_articles": 6,
+                       "par_status": "NONE", "unpack_status": "NONE"}),
+                ("FAILURE/HEALTH", "NONE", "NONE", 400, 950),
+            ),
+            (
+                json!({"failure": "par", "health": 900, "critical_health": 850,
+                       "total_articles": 10, "success_articles": 9, "failed_articles": 1,
+                       "par_status": "FAILURE", "unpack_status": "NONE"}),
+                ("FAILURE/PAR", "FAILURE", "NONE", 900, 850),
+            ),
+            (
+                json!({"failure": "unpack", "health": 1000, "critical_health": 1000,
+                       "total_articles": 10, "success_articles": 10, "failed_articles": 0,
+                       "par_status": "SUCCESS", "unpack_status": "FAILURE"}),
+                ("FAILURE/UNPACK", "SUCCESS", "FAILURE", 1000, 1000),
+            ),
+            // A local problem (disk full, server down) is no verdict on the release.
+            (
+                json!({"health": 1000, "critical_health": 1000}),
+                ("FAILURE/NONE", "NONE", "NONE", 1000, 1000),
+            ),
+        ];
+        for (result, (status, par, unpack, health, critical)) in cases {
+            let root = tempfile::tempdir().unwrap();
+            let coordinator = idle_coordinator(root.path());
+            let nzbid = append(
+                &coordinator,
+                &format!("{RELEASE}.nzb"),
+                &release_nzb("a"),
+                "movies",
+            )
+            .await;
+            let id = row_of(&coordinator, nzbid).await.id;
+            finish(&coordinator, &id, QueueStatus::Failed, result).await;
+
+            // Listed, and again once only the archived entry is left.
+            for archived in [false, true] {
+                if archived {
+                    coordinator.storage().delete_download(&id).await.unwrap();
+                }
+                let history = handle_history(&coordinator).await.unwrap();
+                let e = entry(&history, nzbid);
+                assert_eq!(e["Status"], status, "archived: {archived}");
+                assert_eq!(e["ParStatus"], par, "{status}, archived: {archived}");
+                assert_eq!(e["UnpackStatus"], unpack, "{status}, archived: {archived}");
+                assert_eq!(e["MoveStatus"], "NONE", "{status}, archived: {archived}");
+                assert_eq!(e["Health"], health, "{status}, archived: {archived}");
+                assert_eq!(
+                    e["CriticalHealth"], critical,
+                    "{status}, archived: {archived}"
+                );
+                assert_eq!(e["Category"], "movies", "{status}, archived: {archived}");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn history_of_a_good_release_reports_its_checks() {
+        let root = tempfile::tempdir().unwrap();
+        let coordinator = idle_coordinator(root.path());
+        let nzbid = append(
+            &coordinator,
+            &format!("{RELEASE}.nzb"),
+            &release_nzb("a"),
+            "movies",
+        )
+        .await;
+        let id = row_of(&coordinator, nzbid).await.id;
+        let result = json!({"health": 980, "critical_health": 900, "total_articles": 50,
+                            "success_articles": 49, "failed_articles": 1,
+                            "par_status": "SUCCESS", "unpack_status": "SUCCESS"});
+        finish(&coordinator, &id, QueueStatus::Completed, result).await;
+        coordinator.storage().delete_download(&id).await.unwrap();
+
+        let history = handle_history(&coordinator).await.unwrap();
+        let e = entry(&history, nzbid);
+        assert_eq!(e["Status"], "SUCCESS/ALL");
+        assert_eq!(e["ParStatus"], "SUCCESS");
+        assert_eq!(e["UnpackStatus"], "SUCCESS");
+        assert_eq!(e["MoveStatus"], "SUCCESS");
+        assert_eq!(e["Health"], 980);
+        assert_eq!(e["TotalArticles"], 50);
+        assert_eq!(e["FailedArticles"], 1);
+        assert_eq!(e["Category"], "movies");
     }
 
     #[tokio::test]
