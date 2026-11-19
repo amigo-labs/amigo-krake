@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.10](https://github.com/amigo-labs/amigo-krake/compare/v0.1.9...v0.1.10) (2026-11-19)
+
+
+### Bug Fixes
+
+* **plugin-runtime:** precompile the plugin guest on a thread with a large stack ([ae79803](https://github.com/amigo-labs/amigo-krake/commit/ae7980335d905ad6f32d23dfd2a191206bf44aff))
+* **tauri:** call tauri_build::build, the build script failed to compile ([5671d3b](https://github.com/amigo-labs/amigo-krake/commit/5671d3b909f019eee5e6eb7f91c1cff60043905f))
+* unbreak the release build (Windows guest precompile, Tauri build script, wasmtime advisories) ([4379ead](https://github.com/amigo-labs/amigo-krake/commit/4379ead1f08802fa504f9c932511514b0a6e35e2))
+* update wasmtime to 50.0.2 (RUSTSEC-2026-0566, -0568, -0573) ([7c25501](https://github.com/amigo-labs/amigo-krake/commit/7c2550114eb671317541ee4fff4770b2b73e251f))
+
 ## [0.1.9](https://github.com/amigo-labs/amigo-krake/compare/v0.1.8...v0.1.9) (2026-11-19)
 
 
