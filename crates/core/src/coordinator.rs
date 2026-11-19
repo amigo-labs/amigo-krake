@@ -387,7 +387,9 @@ impl Coordinator {
             filesize: resolved.as_ref().and_then(|r| r.filesize),
             status: QueueStatus::Queued.as_str().to_string(),
             priority,
-            package_id: sanitized_category.clone(),
+            // A category is not a package: `package_id` must name a row of
+            // `packages`. The category lives in the metadata.
+            package_id: None,
             plugin_id: None,
             download_dir: Some(download_dir),
             bytes_downloaded: 0,
@@ -414,19 +416,189 @@ impl Coordinator {
             }
             Err(e) => return Err(e),
         }
-        // Cache the owner so event filtering doesn't hit the DB per event.
-        self.owners.lock().await.insert(id.clone(), owner);
-        let _ = self.event_tx.send(DownloadEvent::Added {
+        if let Some(category) = sanitized_category {
+            self.storage
+                .merge_download_metadata(&id, &serde_json::json!({ "category": category }))
+                .await?;
+        }
+        self.announce_and_start(&id, url, owner).await?;
+        Ok(id)
+    }
+
+    /// Add an NZB as a Usenet download named `name` (its release name).
+    ///
+    /// The NZB is stored with the row before the queue can start it, so the
+    /// transfer always finds its segments. Every NZB is a download of its
+    /// own, and its files go to a folder of their own,
+    /// `<download dir>/<category>/<name>`, where post-processing also unpacks
+    /// them. `category` is kept in the download's metadata.
+    pub async fn add_nzb_download(
+        &self,
+        name: &str,
+        nzb_data: &str,
+        category: Option<&str>,
+    ) -> Result<String, crate::Error> {
+        let options = NzbOptions {
+            category: category.map(str::to_string),
+            ..NzbOptions::default()
+        };
+        Ok(self
+            .add_nzb_download_with(name, nzb_data, &options)
+            .await?
+            .id)
+    }
+
+    /// Queue an NZB as [`Self::add_nzb_download`] does, with what NZBGet's
+    /// `append` passes beyond the NZB: priority, paused, duplicate check
+    /// and the media check.
+    pub async fn add_nzb_download_with(
+        &self,
+        name: &str,
+        nzb_data: &str,
+        options: &NzbOptions,
+    ) -> Result<NzbAdded, crate::Error> {
+        let category = options.category.as_deref();
+        let nzb = crate::protocol::usenet::nzb::parse_nzb(nzb_data)?;
+        let file_count = nzb.files.len();
+        let total_bytes: u64 = nzb.files.iter().map(|f| f.total_bytes()).sum();
+
+        let category = category.filter(|c| !c.trim().is_empty());
+        let mut parent = self.storage.download_dir.clone();
+        if let Some(raw) = category {
+            let sanitized = crate::sanitize_category(raw).ok_or_else(|| {
+                crate::Error::Other(format!(
+                    "invalid category {raw:?}: must not contain path traversal, absolute paths, or NUL bytes"
+                ))
+            })?;
+            parent.push(sanitized);
+        }
+
+        let id = Uuid::new_v4().to_string();
+        let folder = crate::sanitize_filename(name);
+        let mut download_dir = parent.join(&folder);
+        // A folder left by an earlier download keeps its files apart.
+        if tokio::fs::try_exists(&download_dir).await.unwrap_or(false) {
+            download_dir = parent.join(format!("{folder}.{}", &id[..8]));
+        }
+
+        let dupe = match &options.dupe {
+            Some(d) => self.is_dupe(d).await?,
+            None => false,
+        };
+        let status = if dupe {
+            // Never queued: it goes straight to the history below.
+            QueueStatus::Failed
+        } else if options.paused {
+            QueueStatus::Paused
+        } else {
+            QueueStatus::Queued
+        };
+
+        let url = format!("nzb://{id}");
+        let row = DownloadRow {
             id: id.clone(),
+            url: url.clone(),
+            protocol: Protocol::Usenet.as_str().to_string(),
+            filename: Some(name.to_string()),
+            filesize: Some(total_bytes),
+            status: status.as_str().to_string(),
+            priority: options.priority,
+            package_id: None,
+            plugin_id: None,
+            download_dir: Some(download_dir.to_string_lossy().into_owned()),
+            bytes_downloaded: 0,
+            speed_current: 0,
+            error_message: None,
+            retry_count: 0,
+            created_at: String::new(),
+            started_at: None,
+            completed_at: None,
+            owner: None,
+        };
+        self.storage.insert_download(&row).await?;
+
+        let mut metadata = serde_json::json!({
+            "file_count": file_count,
+            "total_bytes": total_bytes,
+            "nzb_data": nzb_data,
+            "category": category.unwrap_or_default(),
+            "media_check": options.media_check,
+        });
+        if let Some(d) = &options.dupe {
+            metadata["dupe_key"] = d.key.clone().into();
+            metadata["dupe_score"] = d.score.into();
+            metadata["dupe_mode"] = d.mode.as_str().into();
+        }
+        if dupe {
+            metadata["failure"] = "dupe".into();
+        }
+        if let Err(e) = self
+            .storage
+            .update_download_metadata(&id, &metadata.to_string())
+            .await
+        {
+            // Without its NZB the row could never download.
+            let _ = self.storage.delete_download(&id).await;
+            return Err(e);
+        }
+
+        if dupe {
+            // NZBGet keeps a skipped duplicate in its history only.
+            self.storage.record_history(&id).await?;
+            self.storage.delete_download(&id).await?;
+            info!("NZB skipped as duplicate: {id} — {name}");
+            return Ok(NzbAdded { id, dupe: true });
+        }
+
+        info!("NZB added: {id} — {name} ({file_count} files, {total_bytes} bytes)");
+        self.announce_and_start(&id, &url, None).await?;
+        Ok(NzbAdded { id, dupe: false })
+    }
+
+    /// NZBGet's duplicate check: whether an NZB with `dupe` is skipped
+    /// because of a listed or archived item with the same key.
+    async fn is_dupe(&self, dupe: &Dupe) -> Result<bool, crate::Error> {
+        if dupe.key.is_empty() || dupe.mode == DupeMode::Force {
+            return Ok(false);
+        }
+        let others = self.storage.dupes_of(&dupe.key).await?;
+        Ok(others.iter().any(|(status, score)| {
+            let succeeded = status == QueueStatus::Completed.as_str();
+            match dupe.mode {
+                DupeMode::Score => {
+                    let pending = [
+                        QueueStatus::Queued,
+                        QueueStatus::Downloading,
+                        QueueStatus::Paused,
+                    ]
+                    .iter()
+                    .any(|s| s.as_str() == status);
+                    (succeeded || pending) && *score >= dupe.score
+                }
+                DupeMode::All => succeeded,
+                DupeMode::Force => false,
+            }
+        }))
+    }
+
+    /// Announce a stored download and start it if a slot is free.
+    async fn announce_and_start(
+        &self,
+        id: &str,
+        url: &str,
+        owner: Option<String>,
+    ) -> Result<(), crate::Error> {
+        // Cache the owner so event filtering doesn't hit the DB per event.
+        self.owners.lock().await.insert(id.to_string(), owner);
+        let _ = self.event_tx.send(DownloadEvent::Added {
+            id: id.to_string(),
             url: url.to_string(),
         });
 
         info!("Download added: {id} — {url}");
 
         // Auto-start if slots available
-        self.try_start_next().await?;
-
-        Ok(id)
+        self.try_start_next().await
     }
 
     /// Start queued downloads until either the concurrency limit is reached or
@@ -652,25 +824,43 @@ impl Coordinator {
                         .update_download_file_info(&download_id, saved_as, Some(bytes))
                         .await;
 
-                    // Run post-processing
-                    if protocol == "usenet" {
-                        let dir = actual_path.parent().unwrap_or(&actual_path);
-                        if let Err(e) = postprocess::run_usenet_pipeline(dir, &pp_config).await {
-                            warn!("Usenet post-processing failed for {download_id}: {e}");
+                    // Run post-processing. A Usenet release that cannot be
+                    // completed fails here, with its reason in the metadata.
+                    let verdict = if protocol == "usenet" {
+                        finish_usenet(&storage, &download_id, &download_dir, &pp_config).await
+                    } else {
+                        if let Err(e) = postprocess::run_pipeline(&actual_path, &pp_config).await {
+                            warn!("Post-processing failed for {download_id}: {e}");
                         }
-                    } else if let Err(e) = postprocess::run_pipeline(&actual_path, &pp_config).await
-                    {
-                        warn!("Post-processing failed for {download_id}: {e}");
-                    }
+                        Ok(())
+                    };
 
-                    let _ = storage
-                        .update_download_status(&download_id, QueueStatus::Completed)
-                        .await;
-                    let _ = storage.record_history(&download_id).await;
-                    let _ = event_tx.send(DownloadEvent::Completed {
-                        id: download_id.clone(),
-                    });
-                    info!("Download completed: {download_id}");
+                    match verdict {
+                        Ok(()) => {
+                            let _ = storage
+                                .update_download_status(&download_id, QueueStatus::Completed)
+                                .await;
+                            let _ = storage.record_history(&download_id).await;
+                            let _ = event_tx.send(DownloadEvent::Completed {
+                                id: download_id.clone(),
+                            });
+                            info!("Download completed: {download_id}");
+                        }
+                        Err(error_msg) => {
+                            error!("Download failed: {download_id} — {error_msg}");
+                            let _ = storage
+                                .update_download_status(&download_id, QueueStatus::Failed)
+                                .await;
+                            let _ = storage
+                                .update_download_error(&download_id, &error_msg, 0)
+                                .await;
+                            let _ = storage.record_history(&download_id).await;
+                            let _ = event_tx.send(DownloadEvent::Failed {
+                                id: download_id.clone(),
+                                error: error_msg,
+                            });
+                        }
+                    }
                 }
                 Err(crate::Error::Cancelled) => {
                     // The transfer was stopped by the user, not by a failure:
@@ -688,6 +878,7 @@ impl Coordinator {
                     let _ = storage
                         .update_download_error(&download_id, &error_msg, retry_policy.max_retries)
                         .await;
+                    let _ = storage.record_history(&download_id).await;
                     let _ = event_tx.send(DownloadEvent::Failed {
                         id: download_id.clone(),
                         error: error_msg,
@@ -942,6 +1133,13 @@ async fn run_usenet_download(
             "No NZB data found in download metadata".into(),
         ));
     };
+    let critical_health = crate::protocol::usenet::critical_health(
+        &crate::protocol::usenet::nzb::parse_nzb(&nzb_data)?,
+    );
+    // A new attempt has no verdict yet.
+    storage
+        .merge_download_metadata(download_id, &serde_json::json!({ "failure": null }))
+        .await?;
 
     let _ = progress_tx.send(DownloadProgress {
         bytes_downloaded: 0,
@@ -965,6 +1163,26 @@ async fn run_usenet_download(
         total_ok + total_failed
     );
 
+    // Health as NZBGet reports it: the share of articles fetched, per mille.
+    let total_articles = total_ok + total_failed;
+    let health = if total_articles == 0 {
+        1000
+    } else {
+        (u64::from(total_ok) * 1000 / u64::from(total_articles)) as u32
+    };
+    storage
+        .merge_download_metadata(
+            download_id,
+            &serde_json::json!({
+                "total_articles": total_articles,
+                "success_articles": total_ok,
+                "failed_articles": total_failed,
+                "health": health,
+                "critical_health": critical_health,
+            }),
+        )
+        .await?;
+
     let _ = progress_tx.send(DownloadProgress {
         bytes_downloaded: total_bytes,
         total_bytes: Some(total_bytes),
@@ -978,6 +1196,173 @@ async fn run_usenet_download(
         .unwrap_or_else(|| download_dir.clone());
 
     Ok((total_bytes, output_path))
+}
+
+/// How an NZB is queued, beyond the NZB itself: what NZBGet's `append`
+/// passes.
+#[derive(Debug, Clone, Default)]
+pub struct NzbOptions {
+    /// Files go to `<download dir>/<category>/<name>`; kept in the metadata.
+    pub category: Option<String>,
+    /// Queue order: higher starts first, 0 is normal. NZBGet's priorities
+    /// (-100 very low … 100 very high, 900 force) are used as they are.
+    pub priority: i32,
+    /// Add the download paused; it starts once resumed.
+    pub paused: bool,
+    /// NZBGet's duplicate check; `None` checks nothing.
+    pub dupe: Option<Dupe>,
+    /// Fail a release that yields no media file (see
+    /// [`postprocess::contains_media`]) as a bad release.
+    pub media_check: bool,
+}
+
+/// NZBGet's duplicate key, score and mode of an NZB.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Dupe {
+    pub key: String,
+    pub score: i64,
+    pub mode: DupeMode,
+}
+
+/// NZBGet's `DupeMode`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DupeMode {
+    /// Skip the NZB if an item with its key and an equal or higher score is
+    /// queued or was downloaded successfully.
+    Score,
+    /// Skip the NZB only if an item with its key was downloaded
+    /// successfully, whatever its score; the queue is not checked.
+    All,
+    /// Never skip the NZB.
+    Force,
+}
+
+impl DupeMode {
+    /// NZBGet's name for the mode; unknown names read as `SCORE`, NZBGet's
+    /// default.
+    pub fn parse(mode: &str) -> Self {
+        match mode.to_ascii_uppercase().as_str() {
+            "ALL" => DupeMode::All,
+            "FORCE" => DupeMode::Force,
+            _ => DupeMode::Score,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DupeMode::Score => "SCORE",
+            DupeMode::All => "ALL",
+            DupeMode::Force => "FORCE",
+        }
+    }
+}
+
+/// What [`Coordinator::add_nzb_download_with`] did with an NZB.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NzbAdded {
+    pub id: String,
+    /// The NZB was a duplicate: it went straight to the history (NZBGet's
+    /// `DELETED/DUPE`) and is not downloaded.
+    pub dupe: bool,
+}
+
+/// Why a finished Usenet transfer did not yield the release, as stored in
+/// the download's metadata (`failure`) and reported by the NZBGet API.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReleaseFailure {
+    /// More articles are missing than the PAR2 recovery data can make up.
+    Health,
+    /// par2 could not repair the release.
+    Par,
+    /// An archive of the release could not be unpacked.
+    Unpack,
+    /// The release unpacked but holds no media file; checked only where
+    /// asked for ([`NzbOptions::media_check`]).
+    NoMedia,
+}
+
+impl ReleaseFailure {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ReleaseFailure::Health => "health",
+            ReleaseFailure::Par => "par",
+            ReleaseFailure::Unpack => "unpack",
+            ReleaseFailure::NoMedia => "media",
+        }
+    }
+}
+
+/// Check and post-process a Usenet download whose articles were fetched,
+/// and record the outcome in its metadata (`failure`, `par_status`,
+/// `unpack_status`). `Err` carries the error message: a broken release
+/// (with `failure` set) or a problem on this machine (`failure` null).
+async fn finish_usenet(
+    storage: &Storage,
+    id: &str,
+    dir: &std::path::Path,
+    pp_config: &postprocess::PostProcessConfig,
+) -> Result<(), String> {
+    let metadata = storage
+        .get_download_metadata(id)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|m| serde_json::from_str::<serde_json::Value>(&m).ok())
+        .unwrap_or_default();
+    let health = metadata["health"].as_u64().unwrap_or(1000);
+    let critical = metadata["critical_health"].as_u64().unwrap_or(1000);
+
+    let record = |failure: Option<ReleaseFailure>, par: &str, unpack: &str| {
+        let fields = serde_json::json!({
+            "failure": failure.map(ReleaseFailure::as_str),
+            "par_status": par,
+            "unpack_status": unpack,
+        });
+        async move {
+            if let Err(e) = storage.merge_download_metadata(id, &fields).await {
+                warn!("Could not record the Usenet result of {id}: {e}");
+            }
+        }
+    };
+
+    if health < critical {
+        // Not even PAR2 can make up for what is missing; NZBGet does not
+        // try either.
+        record(Some(ReleaseFailure::Health), "NONE", "NONE").await;
+        return Err(format!(
+            "Too many articles missing: health {health}‰ is below the critical {critical}‰"
+        ));
+    }
+
+    let outcome = match postprocess::run_usenet_pipeline(dir, pp_config).await {
+        Ok(outcome) => outcome,
+        Err(e) => {
+            warn!("Usenet post-processing failed for {id}: {e}");
+            record(None, "NONE", "NONE").await;
+            return Err(format!("Post-processing failed: {e}"));
+        }
+    };
+    let (par, unpack) = (outcome.par.as_str(), outcome.unpack.as_str());
+    if outcome.par == postprocess::StageStatus::Failure {
+        record(Some(ReleaseFailure::Par), par, unpack).await;
+        return Err("PAR2 repair failed".into());
+    }
+    if outcome.unpack == postprocess::StageStatus::Failure {
+        record(Some(ReleaseFailure::Unpack), par, unpack).await;
+        return Err("Unpacking failed".into());
+    }
+    if metadata["media_check"].as_bool() == Some(true) {
+        let dir = dir.to_path_buf();
+        let has_media = tokio::task::spawn_blocking(move || postprocess::contains_media(&dir))
+            .await
+            .unwrap_or(true);
+        if !has_media {
+            record(Some(ReleaseFailure::NoMedia), par, unpack).await;
+            return Err("The release holds no media file".into());
+        }
+    }
+    record(None, par, unpack).await;
+    Ok(())
 }
 
 fn detect_protocol(url: &str) -> Protocol {

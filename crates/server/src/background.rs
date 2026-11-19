@@ -137,10 +137,6 @@ async fn check_nzb_watch_folder(coordinator: &Arc<Coordinator>) -> Result<(), kr
                 continue;
             }
         };
-        let Ok(nzb) = krake_core::protocol::usenet::nzb::parse_nzb(&nzb_data) else {
-            warn!("Invalid NZB in watch folder: {path:?}");
-            continue;
-        };
         let filename = path
             .file_stem()
             .and_then(|s| s.to_str())
@@ -148,7 +144,7 @@ async fn check_nzb_watch_folder(coordinator: &Arc<Coordinator>) -> Result<(), kr
             .to_string();
 
         let id = match coordinator
-            .add_download("nzb://watch-folder", Some(filename.clone()))
+            .add_nzb_download(&filename, &nzb_data, None)
             .await
         {
             Ok(id) => id,
@@ -157,17 +153,6 @@ async fn check_nzb_watch_folder(coordinator: &Arc<Coordinator>) -> Result<(), kr
                 continue;
             }
         };
-
-        // Store NZB metadata
-        let metadata = serde_json::json!({
-            "file_count": nzb.files.len(),
-            "total_bytes": nzb.files.iter().map(|f| f.total_bytes()).sum::<u64>(),
-            "nzb_data": nzb_data,
-        });
-        let _ = coordinator
-            .storage()
-            .update_download_metadata(&id, &metadata.to_string())
-            .await;
 
         info!("NZB imported from watch folder: {filename} → {id}");
 
@@ -286,17 +271,12 @@ async fn fetch_and_process_feed(
             continue;
         }
 
-        // Add the NZB URL as a download
-        let category = if feed.category.is_empty() {
-            None
-        } else {
-            Some(feed.category.clone())
+        let category = Some(feed.category.as_str()).filter(|c| !c.is_empty());
+        let added = match fetch_nzb(&url, false).await {
+            Ok(nzb_data) => add_rss_nzb(coordinator, &url, &nzb_data, category).await,
+            Err(e) => Err(e),
         };
-
-        match coordinator
-            .add_download_with_options(&url, None, category, 0, None)
-            .await
-        {
+        match added {
             Ok(_id) => {
                 coordinator
                     .storage()
@@ -309,6 +289,98 @@ async fn fetch_and_process_feed(
     }
 
     Ok(imported)
+}
+
+/// Cap on an NZB fetched from a feed; real NZBs are a few MB at most.
+const MAX_NZB_BYTES: usize = 64 * 1024 * 1024;
+
+/// Fetch an NZB from `url`: an RSS item's link, or a URL given to NZBGet's
+/// `append`. Both come from outside, so every hop of a redirect gets the
+/// SSRF guard (unless `allow_private_targets`) and the body is capped at
+/// [`MAX_NZB_BYTES`].
+pub(crate) async fn fetch_nzb(
+    url: &str,
+    allow_private_targets: bool,
+) -> Result<String, krake_core::Error> {
+    const MAX_REDIRECTS: usize = 5;
+    let err = |msg: String| krake_core::Error::Other(msg);
+    // Redirects are followed here, so each target is checked.
+    let client = reqwest::Client::builder()
+        .user_agent("krake/0.1.0")
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(std::time::Duration::from_secs(60))
+        .build()?;
+    let mut current = reqwest::Url::parse(url).map_err(|e| err(format!("NZB URL {url}: {e}")))?;
+    let mut resp = None;
+    for _ in 0..=MAX_REDIRECTS {
+        crate::net_guard::validate_outbound_url(current.as_str(), allow_private_targets)
+            .await
+            .map_err(|e| err(format!("NZB URL rejected: {e}")))?;
+        let r = client.get(current.clone()).send().await?;
+        if !r.status().is_redirection() {
+            resp = Some(r);
+            break;
+        }
+        let location = r
+            .headers()
+            .get(reqwest::header::LOCATION)
+            .and_then(|l| l.to_str().ok())
+            .ok_or_else(|| err(format!("NZB URL {current} redirects without a location")))?;
+        current = current
+            .join(location)
+            .map_err(|e| err(format!("NZB URL {current} redirects to {location}: {e}")))?;
+    }
+    let mut resp = resp
+        .ok_or_else(|| {
+            err(format!(
+                "NZB URL {url}: more than {MAX_REDIRECTS} redirects"
+            ))
+        })?
+        .error_for_status()?;
+    let too_large = || err(format!("NZB at {url} is larger than {MAX_NZB_BYTES} bytes"));
+    if resp
+        .content_length()
+        .is_some_and(|len| len > MAX_NZB_BYTES as u64)
+    {
+        return Err(too_large());
+    }
+    let mut body = Vec::new();
+    while let Some(chunk) = resp.chunk().await? {
+        if body.len() + chunk.len() > MAX_NZB_BYTES {
+            return Err(too_large());
+        }
+        body.extend_from_slice(&chunk);
+    }
+    String::from_utf8(body).map_err(|e| err(format!("NZB at {url} is not UTF-8: {e}")))
+}
+
+/// Queue an NZB fetched from a feed as a Usenet download named after its
+/// URL, in the feed's category: stored in its metadata, files in
+/// `<download dir>/<category>/<name>`.
+async fn add_rss_nzb(
+    coordinator: &Arc<Coordinator>,
+    url: &str,
+    nzb_data: &str,
+    category: Option<&str>,
+) -> Result<String, krake_core::Error> {
+    coordinator
+        .add_nzb_download(&rss_nzb_name(url), nzb_data, category)
+        .await
+}
+
+/// The release name of an NZB URL: its last path segment without `.nzb`.
+fn rss_nzb_name(url: &str) -> String {
+    let path = url.split(['?', '#']).next().unwrap_or(url);
+    let segment = path.rsplit('/').next().unwrap_or_default();
+    let stem = match segment.len().checked_sub(4) {
+        Some(n) if n > 0 && segment[n..].eq_ignore_ascii_case(".nzb") => &segment[..n],
+        _ => segment,
+    };
+    if stem.is_empty() {
+        "rss-import".to_string()
+    } else {
+        stem.to_string()
+    }
 }
 
 /// Extract NZB download links from RSS/Atom XML content.
@@ -343,4 +415,137 @@ fn extract_nzb_links(xml: &str) -> Vec<String> {
     links.sort();
     links.dedup();
     links
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn fetch_nzb_follows_redirects_and_guards_the_first_url() {
+        let app = axum::Router::new()
+            .route(
+                "/r",
+                axum::routing::get(|| async { axum::response::Redirect::temporary("/nzb") }),
+            )
+            .route("/nzb", axum::routing::get(|| async { "<nzb/>" }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let url = format!("http://127.0.0.1:{port}/r");
+        assert_eq!(fetch_nzb(&url, true).await.unwrap(), "<nzb/>");
+        assert!(fetch_nzb(&url, false).await.is_err());
+    }
+
+    const NZB: &str = r#"<?xml version="1.0" encoding="utf-8"?>
+<nzb xmlns="http://www.newzbin.com/DTD/2003/nzb">
+  <file poster="p@example.com" date="1700000000" subject="&quot;abc.part01.rar&quot; yEnc (1/1)">
+    <groups><group>alt.binaries.test</group></groups>
+    <segments><segment bytes="2048" number="1">a@example.com</segment></segments>
+  </file>
+</nzb>"#;
+
+    /// A coordinator over real directories whose queue never starts a
+    /// transfer.
+    fn idle_coordinator(root: &Path) -> Arc<Coordinator> {
+        let storage = krake_core::storage::Storage::open(
+            root.join("krake.db"),
+            root.join("downloads"),
+            root.join("tmp"),
+        )
+        .expect("storage");
+        let config = krake_core::config::Config {
+            max_concurrent_downloads: 0,
+            ..Default::default()
+        };
+        Arc::new(Coordinator::new(config, storage))
+    }
+
+    #[tokio::test]
+    async fn watch_folder_nzbs_become_usenet_downloads_of_their_own() {
+        let root = tempfile::tempdir().unwrap();
+        let coordinator = idle_coordinator(root.path());
+        let watch = root.path().join("watch");
+        std::fs::create_dir_all(&watch).unwrap();
+        std::fs::write(watch.join("First.Release.nzb"), NZB).unwrap();
+        std::fs::write(watch.join("Second.Release.nzb"), NZB).unwrap();
+        coordinator
+            .storage()
+            .set_update_state("nzb_watch_dir", &watch.to_string_lossy())
+            .await
+            .unwrap();
+
+        check_nzb_watch_folder(&coordinator).await.unwrap();
+
+        let mut rows = coordinator.storage().list_downloads().await.unwrap();
+        rows.sort_by(|a, b| a.filename.cmp(&b.filename));
+        assert_eq!(rows.len(), 2, "each NZB is a download of its own");
+        for (row, name) in rows.iter().zip(["First.Release", "Second.Release"]) {
+            assert_eq!(row.protocol, "usenet");
+            assert_eq!(row.filename.as_deref(), Some(name));
+            let folder = root.path().join("downloads").join(name);
+            assert_eq!(row.download_dir.as_deref(), folder.to_str());
+            let metadata = coordinator
+                .storage()
+                .get_download_metadata(&row.id)
+                .await
+                .unwrap()
+                .expect("metadata");
+            let metadata: serde_json::Value = serde_json::from_str(&metadata).unwrap();
+            assert_eq!(metadata["nzb_data"], NZB);
+        }
+        assert!(watch.join(".processed/First.Release.nzb").exists());
+    }
+
+    #[tokio::test]
+    async fn an_rss_nzb_with_a_category_lands_in_its_folder() {
+        let root = tempfile::tempdir().unwrap();
+        let coordinator = idle_coordinator(root.path());
+
+        let id = add_rss_nzb(
+            &coordinator,
+            "https://indexer.example/get/Some.Movie.2024.nzb?apikey=x",
+            NZB,
+            Some("movies"),
+        )
+        .await
+        .expect("a category must not need a package");
+
+        let row = coordinator
+            .storage()
+            .get_download(&id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.protocol, "usenet");
+        assert_eq!(row.package_id, None);
+        assert_eq!(row.filename.as_deref(), Some("Some.Movie.2024"));
+        let folder = root.path().join("downloads/movies/Some.Movie.2024");
+        assert_eq!(row.download_dir.as_deref(), folder.to_str());
+        let metadata: serde_json::Value = serde_json::from_str(
+            &coordinator
+                .storage()
+                .get_download_metadata(&id)
+                .await
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(metadata["category"], "movies");
+        assert_eq!(metadata["nzb_data"], NZB);
+    }
+
+    #[test]
+    fn rss_nzb_name_is_the_last_path_segment_without_extension() {
+        assert_eq!(
+            rss_nzb_name("https://x.example/a/Release.Name.nzb?k=1"),
+            "Release.Name"
+        );
+        assert_eq!(
+            rss_nzb_name("https://x.example/a/Release.Name.NZB"),
+            "Release.Name"
+        );
+        assert_eq!(rss_nzb_name("https://x.example/"), "rss-import");
+    }
 }

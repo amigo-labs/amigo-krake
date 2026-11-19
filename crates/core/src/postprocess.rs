@@ -1,6 +1,6 @@
 //! Post-processing pipeline: extraction, verification, cleanup.
 
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::Path;
 use std::process::Command;
 
@@ -119,11 +119,11 @@ fn extract_rar(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
     let rar = unrar::Archive::new(archive);
     let mut open = rar
         .open_for_processing()
-        .map_err(|e| crate::Error::Other(format!("Failed to open RAR archive: {e}")))?;
+        .map_err(|e| rar_error("Failed to open RAR archive", e))?;
 
     while let Some(header) = open
         .read_header()
-        .map_err(|e| crate::Error::Other(format!("RAR header error: {e}")))?
+        .map_err(|e| rar_error("RAR header error", e))?
     {
         let name = header.entry().filename.to_string_lossy().to_string();
         // extract_with_base writes to output_dir + the entry's *raw* path, so a
@@ -133,18 +133,32 @@ fn extract_rar(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
             debug!("Extracting: {name}");
             header
                 .extract_with_base(output_dir)
-                .map_err(|e| crate::Error::Other(format!("RAR extract error for {name}: {e}")))?
+                .map_err(|e| rar_error(&format!("RAR extract error for {name}"), e))?
         } else {
             warn!(
                 "RAR entry {name:?} escapes output directory — skipping (path traversal blocked)"
             );
             header
                 .skip()
-                .map_err(|e| crate::Error::Other(format!("RAR skip error for {name}: {e}")))?
+                .map_err(|e| rar_error(&format!("RAR skip error for {name}"), e))?
         };
     }
 
     Ok(())
+}
+
+/// A libunrar error: writing the output (or memory) failing is a problem on
+/// this machine and becomes an IO error; anything else is the archive's
+/// fault.
+fn rar_error(context: &str, e: unrar::error::UnrarError) -> crate::Error {
+    use unrar::error::Code;
+    let message = format!("{context}: {e}");
+    match e.code {
+        Code::ECreate | Code::EWrite | Code::EClose | Code::NoMemory => {
+            crate::Error::Io(std::io::Error::other(message))
+        }
+        _ => crate::Error::Other(message),
+    }
 }
 
 /// Cap on cumulative extracted bytes per archive. Real-world Usenet/HTTP
@@ -235,7 +249,8 @@ fn extract_zip(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
             }
             let mut out_file = std::fs::File::create(&out_path)?;
             let mut limited = (&mut entry).take(remaining);
-            let written = std::io::copy(&mut limited, &mut out_file)?;
+            let written = copy_entry(&mut limited, &mut out_file)
+                .map_err(|e| e.into_error(&format!("ZIP entry {name:?}")))?;
             total_extracted = total_extracted.saturating_add(written);
             // If the entry's declared size exceeds the budget, or we hit
             // exactly the budget without reaching EOF, we're under attack.
@@ -316,6 +331,7 @@ fn extract_7z(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
     std::fs::create_dir_all(output_dir)?;
     let mut reader = sevenz_rust2::ArchiveReader::open(archive, sevenz_rust2::Password::empty())
         .map_err(map_err)?;
+    let mut write_error = None;
     reader
         .for_each_entries(|entry, data| {
             if !is_safe_archive_entry(entry.name()) {
@@ -329,10 +345,75 @@ fn extract_7z(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
                 return Ok(true); // skip this entry, keep going
             }
             let dest = output_dir.join(entry.name().replace('\\', "/"));
-            sevenz_rust2::default_entry_extract_fn(entry, data, &dest)
+            match write_7z_entry(entry, data, &dest) {
+                Ok(()) => Ok(true),
+                Err(CopyError::Write(e)) => {
+                    // Stop here; reported as local below.
+                    write_error = Some(e);
+                    Ok(false)
+                }
+                Err(CopyError::Read(e)) => Err(e.into()),
+            }
         })
         .map_err(map_err)?;
+    match write_error {
+        Some(e) => Err(crate::Error::Io(e)),
+        None => Ok(()),
+    }
+}
+
+/// Write one 7z entry to `dest`, telling a write error (this machine) from
+/// a read error (the archive).
+fn write_7z_entry(
+    entry: &sevenz_rust2::ArchiveEntry,
+    data: &mut dyn Read,
+    dest: &Path,
+) -> Result<(), CopyError> {
+    if entry.is_directory() {
+        return std::fs::create_dir_all(dest).map_err(CopyError::Write);
+    }
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent).map_err(CopyError::Write)?;
+    }
+    let mut file = std::fs::File::create(dest).map_err(CopyError::Write)?;
+    copy_entry(data, &mut file)?;
     Ok(())
+}
+
+/// An error while copying an archive entry out: reading it (the archive's
+/// fault) or writing it (this machine's).
+#[derive(Debug)]
+enum CopyError {
+    Read(std::io::Error),
+    Write(std::io::Error),
+}
+
+impl CopyError {
+    /// A read error is the archive's fault, a write error a local IO error.
+    fn into_error(self, context: &str) -> crate::Error {
+        match self {
+            CopyError::Read(e) => crate::Error::Other(format!("{context}: {e}")),
+            CopyError::Write(e) => crate::Error::Io(e),
+        }
+    }
+}
+
+/// `std::io::copy`, keeping read and write errors apart.
+fn copy_entry(reader: &mut dyn Read, writer: &mut dyn Write) -> Result<u64, CopyError> {
+    let mut buf = vec![0u8; 64 * 1024];
+    let mut total = 0u64;
+    loop {
+        let n = match reader.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(CopyError::Read(e)),
+        };
+        writer.write_all(&buf[..n]).map_err(CopyError::Write)?;
+        total += n as u64;
+    }
+    writer.flush().map_err(CopyError::Write)?;
+    Ok(total)
 }
 
 fn extract_tar(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
@@ -370,6 +451,74 @@ fn extract_tar(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
     )
 }
 
+/// Whether `dir` (searched recursively) holds a media file: a video or audio
+/// file by extension, see [`MEDIA_EXTENSIONS`].
+pub fn contains_media(dir: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return false;
+    };
+    entries.flatten().any(|entry| {
+        let path = entry.path();
+        match entry.file_type() {
+            Ok(t) if t.is_dir() => contains_media(&path),
+            Ok(t) if t.is_file() => path
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| MEDIA_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str())),
+            _ => false,
+        }
+    })
+}
+
+/// The extensions [`contains_media`] counts as media: video containers
+/// (including disc images and DVD/Blu-ray streams) and audio files.
+/// Subtitles, artwork, NFOs, archives and PAR2 files are not media.
+pub const MEDIA_EXTENSIONS: &[&str] = &[
+    // Video
+    "mkv", "mp4", "m4v", "avi", "mov", "wmv", "asf", "mpg", "mpeg", "m2v", "ts", "m2ts", "mts",
+    "vob", "webm", "flv", "ogv", "divx", "xvid", "3gp", "rmvb", "iso", "img", // Audio
+    "mp3", "flac", "m4a", "m4b", "aac", "ogg", "oga", "opus", "wav", "wma", "ape", "wv", "alac",
+    "aiff", "aif", "dsf", "dff", "mka",
+];
+
+/// How a post-processing stage of a Usenet download ended, in NZBGet's
+/// terms (`ParStatus`, `UnpackStatus`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StageStatus {
+    /// The stage had nothing to do, was switched off, or could not run here
+    /// (e.g. `par2` is not installed).
+    None,
+    Success,
+    /// The release could not be repaired or unpacked.
+    Failure,
+}
+
+impl StageStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            StageStatus::None => "NONE",
+            StageStatus::Success => "SUCCESS",
+            StageStatus::Failure => "FAILURE",
+        }
+    }
+}
+
+/// What post-processing made of a Usenet download.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UsenetPostOutcome {
+    pub par: StageStatus,
+    pub unpack: StageStatus,
+}
+
+/// Why an external tool did not succeed.
+#[derive(Debug)]
+enum ToolError {
+    /// The tool could not be started (not installed, not executable).
+    NotRun(String),
+    /// The tool ran and reported failure.
+    Failed(String),
+}
+
 /// Run the full Usenet post-processing pipeline for a directory of downloaded files.
 ///
 /// **Modes:**
@@ -382,53 +531,79 @@ fn extract_tar(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
 ///   Lower peak CPU/RAM — recommended for Raspberry Pi, low-power NAS.
 /// - `sequential_postprocess = false` (default): PAR2 and extraction can overlap
 ///   where files are independent.
+///
+/// A release that par2 cannot repair is not unpacked. `Err` means a problem
+/// on this machine (e.g. a write error), not a broken release.
 pub async fn run_usenet_pipeline(
     download_dir: &Path,
     config: &PostProcessConfig,
-) -> Result<(), crate::Error> {
+) -> Result<UsenetPostOutcome, crate::Error> {
+    // PAR2 must complete before extraction for data integrity, in both
+    // modes; in the future the standard mode could overlap independent files.
     if config.sequential_postprocess {
-        // Sequential mode: PAR2 first, then extract. No parallelism.
         info!("Post-processing (sequential mode)");
-        run_par2_phase(download_dir, config)?;
-        run_extract_phase(download_dir, config)?;
     } else {
-        // Default mode: PAR2 first (must complete before extract for data integrity),
-        // then extract. In the future this could overlap independent files.
         info!("Post-processing (standard mode)");
-        run_par2_phase(download_dir, config)?;
-        run_extract_phase(download_dir, config)?;
     }
-
-    Ok(())
+    let par = run_par2_phase(download_dir, config, run_tool);
+    if par == StageStatus::Failure {
+        return Ok(UsenetPostOutcome {
+            par,
+            unpack: StageStatus::None,
+        });
+    }
+    let unpack = run_extract_phase(download_dir, config)?;
+    Ok(UsenetPostOutcome { par, unpack })
 }
 
-/// PAR2 verify and optional repair phase.
-fn run_par2_phase(download_dir: &Path, config: &PostProcessConfig) -> Result<(), crate::Error> {
+/// PAR2 verify and optional repair phase. `run` starts the `par2` tool.
+fn run_par2_phase(
+    download_dir: &Path,
+    config: &PostProcessConfig,
+    run: impl Fn(&str, &[&str]) -> Result<(), ToolError>,
+) -> StageStatus {
     if !config.par2_repair {
-        return Ok(());
+        return StageStatus::None;
     }
 
     let Some(par2_file) = find_par2_file(download_dir) else {
-        return Ok(());
+        return StageStatus::None;
+    };
+    let par2_path = par2_file.to_string_lossy();
+
+    let repair = || match run("par2", &["r", &par2_path]) {
+        Ok(()) => {
+            info!("PAR2 repair successful");
+            StageStatus::Success
+        }
+        Err(ToolError::Failed(e)) => {
+            warn!("PAR2 repair failed: {e}");
+            StageStatus::Failure
+        }
+        Err(ToolError::NotRun(e)) => {
+            warn!("PAR2 repair skipped: {e}");
+            StageStatus::None
+        }
     };
 
-    if config.selective_par2 {
+    let status = if config.selective_par2 {
         // Selective: verify with index only, load recovery volumes only on demand
         info!("PAR2 verify (selective — index only): {:?}", par2_file);
-
-        match run_external("par2", &["v", &par2_file.to_string_lossy()]) {
+        match run("par2", &["v", &par2_path]) {
             Ok(()) => {
                 info!("PAR2 verification passed — no repair needed, recovery volumes not loaded");
+                StageStatus::Success
             }
-            Err(_) => {
+            Err(ToolError::NotRun(e)) => {
+                warn!("PAR2 verification skipped: {e}");
+                StageStatus::None
+            }
+            Err(ToolError::Failed(_)) => {
                 let vol_count = count_par2_volumes(download_dir);
                 info!(
                     "PAR2 verification found damage — loading {vol_count} recovery volumes for repair..."
                 );
-                match run_external("par2", &["r", &par2_file.to_string_lossy()]) {
-                    Ok(()) => info!("PAR2 repair successful"),
-                    Err(e) => warn!("PAR2 repair failed: {e}"),
-                }
+                repair()
             }
         }
     } else {
@@ -437,27 +612,54 @@ fn run_par2_phase(download_dir: &Path, config: &PostProcessConfig) -> Result<(),
             "PAR2 verify+repair (full — all volumes loaded): {:?}",
             par2_file
         );
+        repair()
+    };
 
-        match run_external("par2", &["r", &par2_file.to_string_lossy()]) {
-            Ok(()) => info!("PAR2 verify+repair complete"),
-            Err(e) => warn!("PAR2 verify+repair failed: {e}"),
-        }
-    }
-
-    if config.par2_delete_after {
+    // A failed repair keeps its PAR2 files, so it can be retried by hand.
+    if config.par2_delete_after && status != StageStatus::Failure {
         delete_par2_files(download_dir);
     }
 
-    Ok(())
+    status
 }
 
-/// Archive extraction phase.
-fn run_extract_phase(download_dir: &Path, config: &PostProcessConfig) -> Result<(), crate::Error> {
+/// Archive extraction phase. An archive that cannot be extracted is a
+/// `Failure`; a write error on this machine is an `Err`.
+fn run_extract_phase(
+    download_dir: &Path,
+    config: &PostProcessConfig,
+) -> Result<StageStatus, crate::Error> {
+    run_extract_phase_with(download_dir, config, local_write_problem)
+}
+
+/// Whether writing to `dir` fails on this machine (disk full, no
+/// permission, read-only file system); `None` when it works.
+fn local_write_problem(dir: &Path) -> Option<std::io::Error> {
+    // Big enough that a disk an extraction has just filled cannot take it.
+    const PROBE_BYTES: usize = 1024 * 1024;
+    let probe = dir.join(format!(".krake-write-probe-{}", std::process::id()));
+    let result = (|| {
+        let mut file = std::fs::File::create(&probe)?;
+        file.write_all(&vec![0u8; PROBE_BYTES])?;
+        file.sync_all()
+    })();
+    let _ = std::fs::remove_file(&probe);
+    result.err()
+}
+
+/// [`run_extract_phase`] with the write probe it uses after a failed
+/// extraction.
+fn run_extract_phase_with(
+    download_dir: &Path,
+    config: &PostProcessConfig,
+    probe: fn(&Path) -> Option<std::io::Error>,
+) -> Result<StageStatus, crate::Error> {
     if !config.auto_extract {
-        return Ok(());
+        return Ok(StageStatus::None);
     }
 
     let archives = find_archives(download_dir);
+    let mut status = StageStatus::None;
     for archive in &archives {
         info!("Extracting: {:?}", archive);
         let result = match archive_type(archive) {
@@ -470,19 +672,43 @@ fn run_extract_phase(download_dir: &Path, config: &PostProcessConfig) -> Result<
 
         match result {
             Ok(()) => {
+                if status == StageStatus::None {
+                    status = StageStatus::Success;
+                }
                 if config.delete_archives {
                     let _ = std::fs::remove_file(archive);
                 }
             }
-            Err(e) => warn!("Extraction failed for {:?}: {e}", archive),
+            Err(e @ crate::Error::Io(_)) => {
+                warn!("Extraction failed for {:?}: {e}", archive);
+                return Err(e);
+            }
+            Err(e) => {
+                // Archive libraries do not always say a write failed (libunrar
+                // has codes beyond ECreate/EWrite, tar is an external tool),
+                // so check the disk before blaming the archive.
+                if let Some(local) = probe(download_dir) {
+                    warn!(
+                        "Extraction failed for {:?}: {e}; {download_dir:?} cannot be written: {local}",
+                        archive
+                    );
+                    return Err(crate::Error::Io(std::io::Error::new(
+                        local.kind(),
+                        format!("cannot write to {download_dir:?} ({local}) while extracting: {e}"),
+                    )));
+                }
+                warn!("Extraction failed for {:?}: {e}", archive);
+                status = StageStatus::Failure;
+            }
         }
     }
 
-    if config.delete_archives {
+    // A failed unpack keeps its archives, so it can be retried by hand.
+    if config.delete_archives && status != StageStatus::Failure {
         delete_rar_volumes(download_dir);
     }
 
-    Ok(())
+    Ok(status)
 }
 
 /// Find the PAR2 index file (shortest name, excludes .vol*.par2 recovery volumes).
@@ -579,6 +805,19 @@ fn delete_rar_volumes(dir: &Path) {
     }
 }
 
+fn run_tool(cmd: &str, args: &[&str]) -> Result<(), ToolError> {
+    let output = Command::new(cmd)
+        .args(args)
+        .output()
+        .map_err(|e| ToolError::NotRun(format!("Failed to run {cmd}: {e}. Is it installed?")))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(ToolError::Failed(format!("{cmd} failed: {stderr}")))
+    }
+}
+
 fn run_external(cmd: &str, args: &[&str]) -> Result<(), crate::Error> {
     let output = Command::new(cmd)
         .args(args)
@@ -595,6 +834,207 @@ fn run_external(cmd: &str, args: &[&str]) -> Result<(), crate::Error> {
 mod tests {
     use super::*;
     use std::assert_matches;
+
+    /// A `par2` stand-in answering verify (`v`) and repair (`r`).
+    fn par2(
+        verify: fn() -> Result<(), ToolError>,
+        repair: fn() -> Result<(), ToolError>,
+    ) -> impl Fn(&str, &[&str]) -> Result<(), ToolError> {
+        move |_cmd, args| if args[0] == "v" { verify() } else { repair() }
+    }
+
+    fn damaged() -> Result<(), ToolError> {
+        Err(ToolError::Failed("damaged".into()))
+    }
+
+    fn ok() -> Result<(), ToolError> {
+        Ok(())
+    }
+
+    fn par2_dir() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("release.par2"), b"index").unwrap();
+        std::fs::write(dir.path().join("release.vol0+1.par2"), b"recovery").unwrap();
+        dir
+    }
+
+    #[test]
+    fn a_repair_that_fails_is_a_par_failure_and_keeps_the_par2_files() {
+        let dir = par2_dir();
+        let status = run_par2_phase(
+            dir.path(),
+            &PostProcessConfig::default(),
+            par2(damaged, damaged),
+        );
+        assert_eq!(status, StageStatus::Failure);
+        assert!(dir.path().join("release.par2").exists());
+
+        let full = PostProcessConfig {
+            selective_par2: false,
+            ..PostProcessConfig::default()
+        };
+        assert_eq!(
+            run_par2_phase(dir.path(), &full, par2(ok, damaged)),
+            StageStatus::Failure
+        );
+    }
+
+    #[test]
+    fn a_verified_or_repaired_release_is_a_par_success() {
+        let config = PostProcessConfig::default();
+        let dir = par2_dir();
+        assert_eq!(
+            run_par2_phase(dir.path(), &config, par2(ok, damaged)),
+            StageStatus::Success
+        );
+        assert!(
+            !dir.path().join("release.par2").exists(),
+            "par2 files are cleaned up"
+        );
+        let dir = par2_dir();
+        assert_eq!(
+            run_par2_phase(dir.path(), &config, par2(damaged, ok)),
+            StageStatus::Success
+        );
+    }
+
+    #[test]
+    fn without_par2_files_or_the_par2_tool_there_is_no_par_verdict() {
+        let config = PostProcessConfig::default();
+        let empty = tempfile::tempdir().unwrap();
+        assert_eq!(
+            run_par2_phase(empty.path(), &config, par2(damaged, damaged)),
+            StageStatus::None
+        );
+
+        fn missing() -> Result<(), ToolError> {
+            Err(ToolError::NotRun("par2 not installed".into()))
+        }
+        let dir = par2_dir();
+        assert_eq!(
+            run_par2_phase(dir.path(), &config, par2(missing, missing)),
+            StageStatus::None
+        );
+    }
+
+    #[test]
+    fn an_archive_that_cannot_be_read_is_an_unpack_failure_and_is_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let rar = dir.path().join("release.rar");
+        std::fs::write(&rar, b"not a rar archive").unwrap();
+        let status = run_extract_phase(dir.path(), &PostProcessConfig::default()).unwrap();
+        assert_eq!(status, StageStatus::Failure);
+        assert!(rar.exists());
+    }
+
+    #[test]
+    fn media_is_found_by_extension_in_any_subfolder() {
+        let dir = tempfile::tempdir().unwrap();
+        for name in [
+            "readme.txt",
+            "release.nfo",
+            "release.par2",
+            "cover.jpg",
+            "setup.exe",
+        ] {
+            std::fs::write(dir.path().join(name), b"x").unwrap();
+        }
+        assert!(!contains_media(dir.path()));
+        std::fs::create_dir_all(dir.path().join("Release/Sub")).unwrap();
+        std::fs::write(dir.path().join("Release/Sub/movie.MKV"), b"x").unwrap();
+        assert!(contains_media(dir.path()));
+
+        let audio = tempfile::tempdir().unwrap();
+        std::fs::write(audio.path().join("01 - track.flac"), b"x").unwrap();
+        assert!(contains_media(audio.path()));
+        assert!(!contains_media(&audio.path().join("missing")));
+    }
+
+    #[test]
+    fn a_zip_with_corrupt_data_is_an_unpack_failure_not_a_local_error() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("release.zip");
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+        zip.start_file(
+            "movie.mkv",
+            zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Stored),
+        )
+        .unwrap();
+        zip.write_all(b"PAYLOAD-PAYLOAD-PAYLOAD").unwrap();
+        zip.finish().unwrap();
+        // Corrupt the stored data: its CRC no longer matches.
+        let mut bytes = std::fs::read(&path).unwrap();
+        let at = bytes.windows(7).position(|w| w == b"PAYLOAD").unwrap();
+        bytes[at] = b'X';
+        std::fs::write(&path, bytes).unwrap();
+
+        let status = run_extract_phase(dir.path(), &PostProcessConfig::default())
+            .expect("a corrupt archive is the release's fault");
+        assert_eq!(status, StageStatus::Failure);
+    }
+
+    #[test]
+    fn a_7z_that_cannot_be_written_out_is_a_local_error() {
+        use sevenz_rust2::{ArchiveEntry, ArchiveWriter, SourceReader};
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("release.7z");
+        let mut writer = ArchiveWriter::create(&archive).unwrap();
+        writer
+            .push_archive_entries(
+                vec![ArchiveEntry::new_file("sub/movie.mkv")],
+                vec![SourceReader::new(std::io::Cursor::new(b"movie".to_vec()))],
+            )
+            .unwrap();
+        writer.finish().unwrap();
+        // `sub` is a file, so `sub/movie.mkv` cannot be written, even as root.
+        std::fs::write(dir.path().join("sub"), b"in the way").unwrap();
+
+        let result = run_extract_phase(dir.path(), &PostProcessConfig::default());
+        assert!(
+            matches!(result, Err(crate::Error::Io(_))),
+            "a write error is local: {result:?}"
+        );
+    }
+
+    #[test]
+    fn a_failed_extraction_on_a_disk_that_cannot_be_written_is_a_local_error() {
+        // Whatever an archive library reports, a disk that refuses writes is
+        // a problem on this machine.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("release.rar"), b"not a rar archive").unwrap();
+        fn full(_: &Path) -> Option<std::io::Error> {
+            Some(std::io::Error::new(
+                std::io::ErrorKind::StorageFull,
+                "no space left on device",
+            ))
+        }
+        fn fine(_: &Path) -> Option<std::io::Error> {
+            None
+        }
+        let config = PostProcessConfig::default();
+        assert!(matches!(
+            run_extract_phase_with(dir.path(), &config, full),
+            Err(crate::Error::Io(_))
+        ));
+        assert_eq!(
+            run_extract_phase_with(dir.path(), &config, fine).unwrap(),
+            StageStatus::Failure
+        );
+    }
+
+    #[test]
+    fn the_write_probe_reports_a_folder_it_cannot_write_to() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(local_write_problem(dir.path()).is_none());
+        // No probe file is left behind.
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+        // A "folder" that is a file cannot be written to, even as root.
+        let file = dir.path().join("file");
+        std::fs::write(&file, b"x").unwrap();
+        assert!(local_write_problem(&file).is_some());
+    }
 
     /// Build a zip in memory containing one symlink entry pointing at an
     /// absolute path outside the output directory, plus a regular file.

@@ -63,7 +63,11 @@ CREATE TABLE IF NOT EXISTS history (
     download_dir TEXT,
     completed_at TEXT NOT NULL DEFAULT (datetime('now')),
     duration_seconds INTEGER,
-    avg_speed INTEGER
+    avg_speed INTEGER,
+    -- How the download ended ('completed' or 'failed') and what it recorded
+    -- about itself (category, Usenet health and checks), without the NZB.
+    status TEXT,
+    metadata TEXT
 );
 
 CREATE TABLE IF NOT EXISTS plugin_accounts (
@@ -296,6 +300,22 @@ fn ensure_owner_column(conn: &Connection) -> Result<(), crate::Error> {
     Ok(())
 }
 
+/// Add `status` and `metadata` to `history` on databases created before
+/// they existed. Idempotent, like [`ensure_owner_column`].
+fn ensure_history_columns(conn: &Connection) -> Result<(), crate::Error> {
+    let columns: Vec<String> = conn
+        .prepare("PRAGMA table_info(history)")?
+        .query_map([], |row| row.get::<_, String>(1))?
+        .filter_map(Result::ok)
+        .collect();
+    for column in ["status", "metadata"] {
+        if !columns.iter().any(|c| c == column) {
+            conn.execute_batch(&format!("ALTER TABLE history ADD COLUMN {column} TEXT;"))?;
+        }
+    }
+    Ok(())
+}
+
 fn ensure_active_url_index(conn: &Connection) -> Result<(), crate::Error> {
     let index_exists: bool = conn
         .query_row(
@@ -354,6 +374,7 @@ impl Storage {
         )?;
         conn.execute_batch(SCHEMA)?;
         ensure_owner_column(&conn)?;
+        ensure_history_columns(&conn)?;
         ensure_active_url_index(&conn)?;
         Ok(Self {
             db: Arc::new(Mutex::new(conn)),
@@ -368,6 +389,7 @@ impl Storage {
         conn.execute_batch("PRAGMA foreign_keys=ON;")?;
         conn.execute_batch(SCHEMA)?;
         ensure_owner_column(&conn)?;
+        ensure_history_columns(&conn)?;
         ensure_active_url_index(&conn)?;
         Ok(Self {
             db: Arc::new(Mutex::new(conn)),
@@ -577,6 +599,79 @@ impl Storage {
         Ok(())
     }
 
+    /// Set `fields` (a JSON object) in a download's metadata, keeping its
+    /// other fields. A `null` field is stored as `null`.
+    pub async fn merge_download_metadata(
+        &self,
+        id: &str,
+        fields: &serde_json::Value,
+    ) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        let current: Option<String> = db
+            .query_row(
+                "SELECT metadata FROM downloads WHERE id = ?1",
+                rusqlite::params![id],
+                |row| row.get(0),
+            )
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other),
+            })?;
+        let mut metadata = current
+            .and_then(|m| serde_json::from_str::<serde_json::Value>(&m).ok())
+            .filter(serde_json::Value::is_object)
+            .unwrap_or_else(|| serde_json::json!({}));
+        if let Some(fields) = fields.as_object() {
+            for (key, value) in fields {
+                metadata[key] = value.clone();
+            }
+        }
+        db.execute(
+            "UPDATE downloads SET metadata = ?1 WHERE id = ?2",
+            rusqlite::params![metadata.to_string(), id],
+        )?;
+        Ok(())
+    }
+
+    /// Status and NZBGet duplicate score of every listed download and
+    /// history entry whose metadata has the duplicate key `key`. A history
+    /// entry from before statuses were kept reads `completed`.
+    pub async fn dupes_of(&self, key: &str) -> Result<Vec<(String, i64)>, crate::Error> {
+        let db = self.db.lock().await;
+        let mut stmt = db.prepare(
+            "SELECT status, metadata FROM downloads
+               WHERE CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.dupe_key') END = ?1
+             UNION ALL
+             SELECT COALESCE(status, 'completed'), metadata FROM history
+               WHERE CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.dupe_key') END = ?1",
+        )?;
+        let rows = stmt
+            .query_map(rusqlite::params![key], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows
+            .into_iter()
+            .map(|(status, metadata)| {
+                let score = serde_json::from_str::<serde_json::Value>(&metadata)
+                    .ok()
+                    .and_then(|m| m["dupe_score"].as_i64())
+                    .unwrap_or(0);
+                (status, score)
+            })
+            .collect())
+    }
+
+    /// The metadata kept with a history entry: the download's, without its
+    /// NZB.
+    pub async fn get_history_metadata(&self, id: &str) -> Result<Option<String>, crate::Error> {
+        let db = self.db.lock().await;
+        let mut stmt = db.prepare("SELECT metadata FROM history WHERE id = ?1")?;
+        let mut rows =
+            stmt.query_map(rusqlite::params![id], |row| row.get::<_, Option<String>>(0))?;
+        Ok(rows.next().transpose()?.flatten())
+    }
+
     pub async fn get_download_metadata(&self, id: &str) -> Result<Option<String>, crate::Error> {
         let db = self.db.lock().await;
         let mut stmt = db.prepare("SELECT metadata FROM downloads WHERE id = ?1")?;
@@ -600,14 +695,16 @@ impl Storage {
         Ok(())
     }
 
-    /// Log a finished download in the history, keeping its row in the list.
-    /// Recording the same download again replaces its entry.
+    /// Log a finished (completed or failed) download in the history,
+    /// keeping its row in the list. Recording the same download again
+    /// replaces its entry.
     pub async fn record_history(&self, id: &str) -> Result<(), crate::Error> {
         let db = self.db.lock().await;
         db.execute(
             "INSERT OR REPLACE INTO history
-                 (id, url, protocol, filename, filesize, download_dir, completed_at)
-             SELECT id, url, protocol, filename, filesize, download_dir, datetime('now')
+                 (id, url, protocol, filename, filesize, download_dir, completed_at, status, metadata)
+             SELECT id, url, protocol, filename, filesize, download_dir, datetime('now'), status,
+                    CASE WHEN json_valid(metadata) THEN json_remove(metadata, '$.nzb_data') END
              FROM downloads WHERE id = ?1",
             rusqlite::params![id],
         )?;
@@ -618,8 +715,10 @@ impl Storage {
         let db = self.db.lock().await;
         let tx = db.unchecked_transaction()?;
         tx.execute(
-            "INSERT INTO history (id, url, protocol, filename, filesize, download_dir, completed_at)
-             SELECT id, url, protocol, filename, filesize, download_dir, datetime('now')
+            "INSERT INTO history
+                 (id, url, protocol, filename, filesize, download_dir, completed_at, status, metadata)
+             SELECT id, url, protocol, filename, filesize, download_dir, datetime('now'), status,
+                    CASE WHEN json_valid(metadata) THEN json_remove(metadata, '$.nzb_data') END
              FROM downloads WHERE id = ?1",
             rusqlite::params![id],
         )?;
@@ -631,7 +730,7 @@ impl Storage {
     pub async fn get_history(&self) -> Result<Vec<DownloadRow>, crate::Error> {
         let db = self.db.lock().await;
         let mut stmt = db.prepare(
-            "SELECT id, url, protocol, filename, filesize, 'completed', 0, NULL, NULL,
+            "SELECT id, url, protocol, filename, filesize, COALESCE(status, 'completed'), 0, NULL, NULL,
                     download_dir, COALESCE(filesize, 0), 0, NULL, 0,
                     completed_at, NULL, completed_at, NULL
              FROM history ORDER BY completed_at DESC",
@@ -1235,6 +1334,71 @@ fn row_to_download(row: &rusqlite::Row<'_>) -> rusqlite::Result<DownloadRow> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn history_columns_are_added_to_an_older_database() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE history (id TEXT PRIMARY KEY, url TEXT NOT NULL, protocol TEXT NOT NULL,
+                 filename TEXT, filesize INTEGER, download_dir TEXT,
+                 completed_at TEXT NOT NULL DEFAULT (datetime('now')),
+                 duration_seconds INTEGER, avg_speed INTEGER);",
+        )
+        .unwrap();
+        ensure_history_columns(&conn).unwrap();
+        ensure_history_columns(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO history (id, url, protocol, status, metadata)
+             VALUES ('a', 'u', 'usenet', 'failed', '{}')",
+            [],
+        )
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn history_keeps_how_a_download_ended_without_its_nzb() {
+        let storage = Storage::open_memory().unwrap();
+        let row = DownloadRow {
+            id: "h1".into(),
+            url: "https://example.com/h1.nzb".into(),
+            protocol: "usenet".into(),
+            filename: None,
+            filesize: None,
+            status: "failed".into(),
+            priority: 0,
+            package_id: None,
+            plugin_id: None,
+            download_dir: None,
+            bytes_downloaded: 0,
+            speed_current: 0,
+            error_message: None,
+            retry_count: 0,
+            created_at: String::new(),
+            started_at: None,
+            completed_at: None,
+            owner: None,
+        };
+        storage.insert_download(&row).await.unwrap();
+        storage
+            .update_download_metadata(
+                "h1",
+                r#"{"nzb_data":"<nzb/>","category":"tv","failure":"par"}"#,
+            )
+            .await
+            .unwrap();
+        storage.record_history("h1").await.unwrap();
+        storage.delete_download("h1").await.unwrap();
+
+        let history = storage.get_history().await.unwrap();
+        assert_eq!(history[0].status, "failed");
+        let metadata: serde_json::Value =
+            serde_json::from_str(&storage.get_history_metadata("h1").await.unwrap().unwrap())
+                .unwrap();
+        assert_eq!(
+            metadata,
+            serde_json::json!({"category": "tv", "failure": "par"})
+        );
+    }
 
     #[test]
     fn ensure_owner_column_adds_missing_column_idempotently() {
