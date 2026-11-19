@@ -568,7 +568,7 @@ async fn handle_editqueue(coordinator: &Arc<Coordinator>, params: &[Value]) -> R
             .list_downloads()
             .await
             .unwrap_or_default();
-        let download = all.iter().find(|d| id_to_nzbid(&d.id) == nzbid as i32);
+        let download = all.iter().find(|d| has_nzbid(&d.id, nzbid as i32));
 
         // A history delete also removes the archived entry, which outlives
         // the download's row — and may be all that is left of it.
@@ -578,7 +578,7 @@ async fn handle_editqueue(coordinator: &Arc<Coordinator>, params: &[Value]) -> R
                 .get_history()
                 .await
                 .unwrap_or_default();
-            if let Some(entry) = archived.iter().find(|h| id_to_nzbid(&h.id) == nzbid as i32)
+            if let Some(entry) = archived.iter().find(|h| has_nzbid(&h.id, nzbid as i32))
                 && let Err(e) = coordinator.storage().delete_history(&entry.id).await
             {
                 warn!("NZBGet editqueue {command} failed for {}: {e}", entry.id);
@@ -655,14 +655,33 @@ async fn handle_global_resume(coordinator: &Arc<Coordinator>) -> RpcResult {
 
 // --- Helpers ---
 
-/// Convert a UUID string to a stable integer NZBID.
-/// NZBGet uses positive integers as IDs. We hash the UUID to get a stable int.
+/// The NZBID of a download: FNV-1a (32 bit) over the bytes of its id, with
+/// the top bit cleared so it is a positive `i32`, and 1 instead of 0.
+///
+/// Clients keep NZBIDs across restarts and krake updates, so this mapping is
+/// fixed and must never change (a test pins it).
 fn id_to_nzbid(id: &str) -> i32 {
+    const OFFSET_BASIS: u32 = 0x811c_9dc5;
+    const PRIME: u32 = 0x0100_0193;
+    let hash = id
+        .bytes()
+        .fold(OFFSET_BASIS, |h, b| (h ^ u32::from(b)).wrapping_mul(PRIME));
+    ((hash & 0x7fff_ffff) as i32).max(1)
+}
+
+/// The NZBID builds before [`id_to_nzbid`] gave a download (std's
+/// `DefaultHasher`). Still matched, so a client holding such an NZBID can
+/// remove its download after an update.
+fn legacy_nzbid(id: &str) -> i32 {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     id.hash(&mut hasher);
-    // Ensure positive, non-zero
     (hasher.finish() as i32).abs().max(1)
+}
+
+/// Whether `nzbid` names the download `id`, under either scheme.
+fn has_nzbid(id: &str, nzbid: i32) -> bool {
+    id_to_nzbid(id) == nzbid || legacy_nzbid(id) == nzbid
 }
 
 #[cfg(test)]
@@ -1104,6 +1123,47 @@ mod tests {
         assert_eq!(nzb_name("Release.Name.NZB"), "Release.Name");
         assert_eq!(nzb_name("Release.Name"), "Release.Name");
         assert_eq!(nzb_name(".nzb"), ".nzb");
+    }
+
+    #[test]
+    fn nzbid_of_a_fixed_id_never_changes() {
+        // FNV-1a (32 bit) of the id's bytes, top bit cleared. Clients keep
+        // NZBIDs across krake updates, so this value must never change.
+        assert_eq!(
+            id_to_nzbid("123e4567-e89b-12d3-a456-426614174000"),
+            1_344_283_647
+        );
+        assert_eq!(id_to_nzbid("a"), 1_678_518_572);
+    }
+
+    #[tokio::test]
+    async fn editqueue_finds_a_download_by_the_nzbid_an_older_build_gave() {
+        let root = tempfile::tempdir().unwrap();
+        let coordinator = idle_coordinator(root.path());
+        let nzbid = append(
+            &coordinator,
+            &format!("{RELEASE}.nzb"),
+            &release_nzb("a"),
+            "movies",
+        )
+        .await;
+        let id = row_of(&coordinator, nzbid).await.id;
+
+        let params = [
+            json!("GroupFinalDelete"),
+            json!(""),
+            json!([legacy_nzbid(&id)]),
+        ];
+        handle_editqueue(&coordinator, &params).await.unwrap();
+
+        assert!(
+            coordinator
+                .storage()
+                .get_download(&id)
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 
     /// Mark a queued download as finished the way the coordinator does,
