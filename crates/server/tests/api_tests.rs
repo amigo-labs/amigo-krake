@@ -10,10 +10,15 @@ use std::assert_matches;
 
 /// Spawn a test server on a random port. Returns the bound address.
 async fn spawn_test_server() -> SocketAddr {
+    spawn_test_server_with(Config::default()).await
+}
+
+/// Spawn a test server with `config`; downloads never auto-start.
+async fn spawn_test_server_with(config: Config) -> SocketAddr {
     // Prevent auto-start of downloads during tests
     let config = Config {
         max_concurrent_downloads: 0,
-        ..Config::default()
+        ..config
     };
 
     let state = krake_server::build_test_state(config);
@@ -983,6 +988,44 @@ async fn nzb_upload_rejects_oversize_body() {
         resp.status().is_client_error(),
         "expected 4xx, got {}",
         resp.status()
+    );
+}
+
+#[tokio::test]
+async fn nzb_upload_queues_each_nzb_as_its_own_usenet_download() {
+    let mut config = Config::default();
+    config.features.usenet = true;
+    let addr = spawn_test_server_with(config).await;
+    let client = test_client();
+
+    let mut ids = Vec::new();
+    for article in ["first", "second"] {
+        let nzb = format!(
+            r#"<nzb><file poster="p" date="1" subject="&quot;{article}.rar&quot; yEnc (1/1)"><groups><group>alt.binaries.test</group></groups><segments><segment bytes="100" number="1">{article}@example.com</segment></segments></file></nzb>"#
+        );
+        let resp = client
+            .post(format!("{}/api/v1/downloads/nzb", base_url(addr)))
+            .json(&serde_json::json!({ "nzb_data": nzb }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 201);
+        let body: serde_json::Value = resp.json().await.unwrap();
+        let id = body["id"].as_str().unwrap().to_string();
+
+        let resp = client
+            .get(format!("{}/api/v1/downloads/{id}", base_url(addr)))
+            .send()
+            .await
+            .unwrap();
+        let download: serde_json::Value = resp.json().await.unwrap();
+        assert_eq!(download["protocol"], "usenet");
+        assert_eq!(download["filesize"], 100);
+        ids.push(id);
+    }
+    assert_ne!(
+        ids[0], ids[1],
+        "a second NZB must not collapse into the first"
     );
 }
 

@@ -678,8 +678,6 @@ async fn upload_nzb(
         )
     })?;
 
-    let file_count = nzb.files.len();
-    let total_bytes: u64 = nzb.files.iter().map(|f| f.total_bytes()).sum();
     let first_name = nzb
         .files
         .first()
@@ -688,32 +686,10 @@ async fn upload_nzb(
 
     match state
         .coordinator
-        .add_download("nzb://upload", Some(first_name))
+        .add_nzb_download(&first_name, &req.nzb_data, None)
         .await
     {
-        Ok(id) => {
-            // Store NZB data + metadata so the coordinator can download segments later
-            let metadata = serde_json::json!({
-                "file_count": file_count,
-                "total_bytes": total_bytes,
-                "nzb_data": req.nzb_data,
-            });
-            let _ = state
-                .coordinator
-                .storage()
-                .update_download_metadata(&id, &metadata.to_string())
-                .await;
-
-            // Also set filesize from NZB total
-            let _ = state
-                .coordinator
-                .storage()
-                .update_download_progress(&id, 0, 0)
-                .await;
-
-            tracing::info!("NZB imported: {id} ({file_count} files, {total_bytes} bytes)");
-            Ok((StatusCode::CREATED, Json(AddResponse { id })))
-        }
+        Ok(id) => Ok((StatusCode::CREATED, Json(AddResponse { id }))),
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
