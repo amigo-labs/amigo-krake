@@ -259,7 +259,7 @@ async fn handle_append(coordinator: &Arc<Coordinator>, params: &[Value]) -> RpcR
         .and_then(|v| v.as_str())
         .unwrap_or("upload.nzb");
     let nzb_content = params.get(1).and_then(|v| v.as_str()).unwrap_or("");
-    let _category = params.get(2).and_then(|v| v.as_str()).unwrap_or("");
+    let category = params.get(2).and_then(|v| v.as_str()).unwrap_or("");
     let _priority = params.get(3).and_then(|v| v.as_i64()).unwrap_or(0);
     let _add_paused = params.get(5).and_then(|v| v.as_bool()).unwrap_or(false);
 
@@ -301,9 +301,10 @@ async fn handle_append(coordinator: &Arc<Coordinator>, params: &[Value]) -> RpcR
     krake_core::protocol::usenet::nzb::parse_nzb(&nzb_str)
         .map_err(|e| (-32602, format!("Invalid NZB: {e}")))?;
 
-    // Add as usenet download
+    // NZBGet names a download after its NZB file, without the extension.
+    let name = nzb_name(nzb_filename);
     match coordinator
-        .add_download("nzb://upload", Some(nzb_filename.to_string()))
+        .add_nzb_download(name, &nzb_str, Some(category))
         .await
     {
         Ok(id) => {
@@ -315,6 +316,30 @@ async fn handle_append(coordinator: &Arc<Coordinator>, params: &[Value]) -> RpcR
     }
 }
 
+/// The download name NZBGet derives from an NZB's file name: the name
+/// without a trailing `.nzb`.
+fn nzb_name(filename: &str) -> &str {
+    let stem_len = filename.len().saturating_sub(4);
+    match filename.get(stem_len..) {
+        Some(ext) if stem_len > 0 && ext.eq_ignore_ascii_case(".nzb") => &filename[..stem_len],
+        _ => filename,
+    }
+}
+
+/// The category `append` stored with a download; empty when it has none,
+/// or when only its archived history entry is left.
+async fn category_of(coordinator: &Arc<Coordinator>, id: &str) -> String {
+    coordinator
+        .storage()
+        .get_download_metadata(id)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|m| serde_json::from_str::<Value>(&m).ok())
+        .and_then(|v| v.get("category")?.as_str().map(String::from))
+        .unwrap_or_default()
+}
+
 async fn handle_listgroups(coordinator: &Arc<Coordinator>) -> RpcResult {
     let rows = coordinator
         .storage()
@@ -322,10 +347,13 @@ async fn handle_listgroups(coordinator: &Arc<Coordinator>) -> RpcResult {
         .await
         .unwrap_or_default();
 
-    let groups: Vec<Value> = rows
+    let mut groups = Vec::new();
+    for r in rows
         .iter()
         .filter(|r| r.status != "completed" && r.status != "failed")
-        .map(|r| {
+    {
+        let category = category_of(coordinator, &r.id).await;
+        groups.push({
             let filesize = r.filesize.unwrap_or(0);
             let downloaded = r.bytes_downloaded;
             let remaining = filesize.saturating_sub(downloaded);
@@ -347,7 +375,7 @@ async fn handle_listgroups(coordinator: &Arc<Coordinator>) -> RpcResult {
                 "URL": r.url,
                 "DestDir": r.download_dir.as_deref().unwrap_or("downloads"),
                 "FinalDir": "",
-                "Category": "",
+                "Category": category,
                 "FileSizeLo": (filesize & 0xFFFFFFFF) as u32,
                 "FileSizeHi": (filesize >> 32) as u32,
                 "FileSizeMB": filesize / (1024 * 1024),
@@ -376,8 +404,8 @@ async fn handle_listgroups(coordinator: &Arc<Coordinator>) -> RpcResult {
                 "PostTotalTimeSec": 0,
                 "PostStageTimeSec": 0,
             })
-        })
-        .collect();
+        });
+    }
 
     Ok(json!(groups))
 }
@@ -403,15 +431,16 @@ async fn handle_history(coordinator: &Arc<Coordinator>) -> RpcResult {
         .unwrap_or_default();
 
     let rows = history_entries(completed, failed, history_rows);
-    let items: Vec<Value> = rows
-        .iter()
-        .map(|r| {
+    let mut items = Vec::new();
+    for r in &rows {
+        let category = category_of(coordinator, &r.id).await;
+        items.push({
             let filesize = r.filesize.unwrap_or(0);
             let downloaded = r.bytes_downloaded;
             let nzbid = id_to_nzbid(&r.id);
             let is_success = r.status == "completed";
 
-            json!({
+            let mut item = json!({
                 "NZBID": nzbid,
                 "NZBName": r.filename.as_deref().unwrap_or("download"),
                 "NZBFilename": r.filename.as_deref().unwrap_or("download.nzb"),
@@ -420,7 +449,7 @@ async fn handle_history(coordinator: &Arc<Coordinator>) -> RpcResult {
                 "URL": r.url,
                 "DestDir": r.download_dir.as_deref().unwrap_or("downloads"),
                 "FinalDir": r.download_dir.as_deref().unwrap_or("downloads"),
-                "Category": "",
+                "Category": category,
                 "FileSizeLo": (filesize & 0xFFFFFFFF) as u32,
                 "FileSizeHi": (filesize >> 32) as u32,
                 "FileSizeMB": filesize / (1024 * 1024),
@@ -453,9 +482,12 @@ async fn handle_history(coordinator: &Arc<Coordinator>) -> RpcResult {
                 "Parameters": [],
                 "ScriptStatuses": [],
                 "ServerStats": [],
-            })
-        })
-        .collect();
+            });
+            // NZBGet's history names an entry `Name`; the queue uses `NZBName`.
+            item["Name"] = item["NZBName"].clone();
+            item
+        });
+    }
 
     Ok(json!(items))
 }
@@ -787,5 +819,270 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    // --- Download client for *arr tools (sofarr, Radarr, Sonarr) ---
+
+    const RELEASE: &str = "Some.Movie.2024.1080p.WEB-DL-GRP";
+
+    /// A release NZB whose only file is named unlike the release, as on a
+    /// real indexer.
+    fn release_nzb(article: &str) -> String {
+        format!(
+            r#"<?xml version="1.0" encoding="utf-8"?>
+<nzb xmlns="http://www.newzbin.com/DTD/2003/nzb">
+  <file poster="p@example.com" date="1700000000" subject="&quot;abc123.part01.rar&quot; yEnc (1/1)">
+    <groups><group>alt.binaries.test</group></groups>
+    <segments><segment bytes="3145728" number="1">{article}@example.com</segment></segments>
+  </file>
+</nzb>"#
+        )
+    }
+
+    /// A coordinator over real directories whose queue never starts a
+    /// transfer, so rows stay as `append` left them.
+    fn idle_coordinator(root: &std::path::Path) -> Arc<Coordinator> {
+        let storage = krake_core::storage::Storage::open(
+            root.join("krake.db"),
+            root.join("downloads"),
+            root.join("tmp"),
+        )
+        .expect("storage");
+        let config = krake_core::config::Config {
+            max_concurrent_downloads: 0,
+            ..Default::default()
+        };
+        Arc::new(Coordinator::new(config, storage))
+    }
+
+    /// `append` exactly as sofarr calls it.
+    async fn append(
+        coordinator: &Arc<Coordinator>,
+        filename: &str,
+        nzb: &str,
+        category: &str,
+    ) -> i64 {
+        let params = [
+            json!(filename),
+            json!(base64::engine::general_purpose::STANDARD.encode(nzb)),
+            json!(category),
+            json!(0),
+            json!(false),
+            json!(false),
+            json!(""),
+            json!(0),
+            json!("SCORE"),
+            json!([]),
+        ];
+        let nzbid = handle_append(coordinator, &params)
+            .await
+            .expect("append")
+            .as_i64()
+            .expect("integer NZBID");
+        assert!(nzbid > 0, "NZBID must be positive");
+        nzbid
+    }
+
+    async fn row_of(coordinator: &Arc<Coordinator>, nzbid: i64) -> DownloadRow {
+        coordinator
+            .storage()
+            .list_downloads()
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|r| i64::from(id_to_nzbid(&r.id)) == nzbid)
+            .expect("row for NZBID")
+    }
+
+    fn entry(list: &Value, nzbid: i64) -> &Value {
+        list.as_array()
+            .expect("list")
+            .iter()
+            .find(|e| e["NZBID"].as_i64() == Some(nzbid))
+            .expect("entry for NZBID")
+    }
+
+    async fn complete(coordinator: &Arc<Coordinator>, id: &str) {
+        coordinator
+            .storage()
+            .update_download_status(id, QueueStatus::Completed)
+            .await
+            .unwrap();
+        coordinator.storage().record_history(id).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn append_stores_the_nzb_as_a_usenet_download() {
+        let root = tempfile::tempdir().unwrap();
+        let coordinator = idle_coordinator(root.path());
+        let nzb = release_nzb("first");
+
+        let nzbid = append(&coordinator, &format!("{RELEASE}.nzb"), &nzb, "movies").await;
+
+        let row = row_of(&coordinator, nzbid).await;
+        assert_eq!(row.protocol, "usenet");
+        assert_eq!(row.filesize, Some(3_145_728));
+        let metadata = coordinator
+            .storage()
+            .get_download_metadata(&row.id)
+            .await
+            .unwrap()
+            .expect("metadata");
+        let metadata: Value = serde_json::from_str(&metadata).unwrap();
+        assert_eq!(metadata["nzb_data"].as_str(), Some(nzb.as_str()));
+
+        // A second release queued meanwhile is its own download.
+        let other = append(
+            &coordinator,
+            "Other.Show.S01E01.nzb",
+            &release_nzb("second"),
+            "tv",
+        )
+        .await;
+        assert_ne!(other, nzbid);
+        assert_ne!(row_of(&coordinator, other).await.id, row.id);
+    }
+
+    #[tokio::test]
+    async fn append_category_is_reported_in_listgroups_and_history() {
+        let root = tempfile::tempdir().unwrap();
+        let coordinator = idle_coordinator(root.path());
+        let nzbid = append(
+            &coordinator,
+            &format!("{RELEASE}.nzb"),
+            &release_nzb("a"),
+            "movies",
+        )
+        .await;
+
+        let groups = handle_listgroups(&coordinator).await.unwrap();
+        assert_eq!(entry(&groups, nzbid)["Category"], "movies");
+
+        complete(&coordinator, &row_of(&coordinator, nzbid).await.id).await;
+        let history = handle_history(&coordinator).await.unwrap();
+        assert_eq!(entry(&history, nzbid)["Category"], "movies");
+    }
+
+    #[tokio::test]
+    async fn queue_and_history_name_the_release_given_to_append() {
+        let root = tempfile::tempdir().unwrap();
+        let coordinator = idle_coordinator(root.path());
+        let nzbid = append(
+            &coordinator,
+            &format!("{RELEASE}.nzb"),
+            &release_nzb("a"),
+            "movies",
+        )
+        .await;
+
+        let groups = handle_listgroups(&coordinator).await.unwrap();
+        assert_eq!(entry(&groups, nzbid)["NZBName"], RELEASE);
+
+        complete(&coordinator, &row_of(&coordinator, nzbid).await.id).await;
+        let history = handle_history(&coordinator).await.unwrap();
+        assert_eq!(entry(&history, nzbid)["Name"], RELEASE);
+        assert_eq!(entry(&history, nzbid)["NZBName"], RELEASE);
+    }
+
+    #[tokio::test]
+    async fn history_final_dir_is_the_downloads_own_folder() {
+        let root = tempfile::tempdir().unwrap();
+        let coordinator = idle_coordinator(root.path());
+        let nzbid = append(
+            &coordinator,
+            &format!("{RELEASE}.nzb"),
+            &release_nzb("a"),
+            "movies",
+        )
+        .await;
+        let other = append(
+            &coordinator,
+            "Other.Movie.2023.nzb",
+            &release_nzb("b"),
+            "movies",
+        )
+        .await;
+
+        let row = row_of(&coordinator, nzbid).await;
+        // The transfer writes and unpacks into the row's folder.
+        let folder = root.path().join("downloads").join("movies").join(RELEASE);
+        assert_eq!(row.download_dir.as_deref(), folder.to_str());
+        assert_ne!(
+            row_of(&coordinator, other).await.download_dir,
+            row.download_dir
+        );
+
+        complete(&coordinator, &row.id).await;
+        let history = handle_history(&coordinator).await.unwrap();
+        assert_eq!(entry(&history, nzbid)["FinalDir"].as_str(), folder.to_str());
+        assert_eq!(entry(&history, nzbid)["DestDir"].as_str(), folder.to_str());
+    }
+
+    #[tokio::test]
+    async fn removing_a_finished_download_keeps_its_files() {
+        let root = tempfile::tempdir().unwrap();
+        let coordinator = idle_coordinator(root.path());
+        let folder = root.path().join("downloads").join("movies").join(RELEASE);
+        std::fs::create_dir_all(&folder).unwrap();
+        let file = folder.join("movie.mkv");
+        std::fs::write(&file, b"video").unwrap();
+        let mut done = row("done", "completed");
+        done.download_dir = Some(folder.to_string_lossy().into_owned());
+        coordinator.storage().insert_download(&done).await.unwrap();
+        coordinator.storage().record_history("done").await.unwrap();
+
+        // What sofarr sends after it imported the files.
+        for command in ["GroupFinalDelete", "HistoryDelete"] {
+            let params = [json!(command), json!(""), json!([id_to_nzbid("done")])];
+            handle_editqueue(&coordinator, &params).await.unwrap();
+        }
+
+        assert!(file.exists(), "the downloaded file must stay on disk");
+        assert!(
+            coordinator
+                .storage()
+                .get_download("done")
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            coordinator
+                .storage()
+                .get_history()
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        let history = handle_history(&coordinator).await.unwrap();
+        assert!(history.as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn nzb_name_drops_only_a_trailing_nzb_extension() {
+        assert_eq!(nzb_name("Release.Name.nzb"), "Release.Name");
+        assert_eq!(nzb_name("Release.Name.NZB"), "Release.Name");
+        assert_eq!(nzb_name("Release.Name"), "Release.Name");
+        assert_eq!(nzb_name(".nzb"), ".nzb");
+    }
+
+    #[tokio::test]
+    async fn append_keeps_a_folder_left_by_an_earlier_download_apart() {
+        let root = tempfile::tempdir().unwrap();
+        let coordinator = idle_coordinator(root.path());
+        let left = root.path().join("downloads").join("movies").join(RELEASE);
+        std::fs::create_dir_all(&left).unwrap();
+
+        let nzbid = append(
+            &coordinator,
+            &format!("{RELEASE}.nzb"),
+            &release_nzb("a"),
+            "movies",
+        )
+        .await;
+
+        let dir = row_of(&coordinator, nzbid).await.download_dir.unwrap();
+        assert_ne!(Some(dir.as_str()), left.to_str());
+        assert!(dir.starts_with(&format!("{}.", left.display())));
     }
 }
