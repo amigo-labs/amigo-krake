@@ -741,25 +741,43 @@ impl Coordinator {
                         .update_download_file_info(&download_id, saved_as, Some(bytes))
                         .await;
 
-                    // Run post-processing
-                    if protocol == "usenet" {
-                        let dir = actual_path.parent().unwrap_or(&actual_path);
-                        if let Err(e) = postprocess::run_usenet_pipeline(dir, &pp_config).await {
-                            warn!("Usenet post-processing failed for {download_id}: {e}");
+                    // Run post-processing. A Usenet release that cannot be
+                    // completed fails here, with its reason in the metadata.
+                    let verdict = if protocol == "usenet" {
+                        finish_usenet(&storage, &download_id, &download_dir, &pp_config).await
+                    } else {
+                        if let Err(e) = postprocess::run_pipeline(&actual_path, &pp_config).await {
+                            warn!("Post-processing failed for {download_id}: {e}");
                         }
-                    } else if let Err(e) = postprocess::run_pipeline(&actual_path, &pp_config).await
-                    {
-                        warn!("Post-processing failed for {download_id}: {e}");
-                    }
+                        Ok(())
+                    };
 
-                    let _ = storage
-                        .update_download_status(&download_id, QueueStatus::Completed)
-                        .await;
-                    let _ = storage.record_history(&download_id).await;
-                    let _ = event_tx.send(DownloadEvent::Completed {
-                        id: download_id.clone(),
-                    });
-                    info!("Download completed: {download_id}");
+                    match verdict {
+                        Ok(()) => {
+                            let _ = storage
+                                .update_download_status(&download_id, QueueStatus::Completed)
+                                .await;
+                            let _ = storage.record_history(&download_id).await;
+                            let _ = event_tx.send(DownloadEvent::Completed {
+                                id: download_id.clone(),
+                            });
+                            info!("Download completed: {download_id}");
+                        }
+                        Err(error_msg) => {
+                            error!("Download failed: {download_id} — {error_msg}");
+                            let _ = storage
+                                .update_download_status(&download_id, QueueStatus::Failed)
+                                .await;
+                            let _ = storage
+                                .update_download_error(&download_id, &error_msg, 0)
+                                .await;
+                            let _ = storage.record_history(&download_id).await;
+                            let _ = event_tx.send(DownloadEvent::Failed {
+                                id: download_id.clone(),
+                                error: error_msg,
+                            });
+                        }
+                    }
                 }
                 Err(crate::Error::Cancelled) => {
                     // The transfer was stopped by the user, not by a failure:
@@ -777,6 +795,7 @@ impl Coordinator {
                     let _ = storage
                         .update_download_error(&download_id, &error_msg, retry_policy.max_retries)
                         .await;
+                    let _ = storage.record_history(&download_id).await;
                     let _ = event_tx.send(DownloadEvent::Failed {
                         id: download_id.clone(),
                         error: error_msg,
@@ -1031,6 +1050,13 @@ async fn run_usenet_download(
             "No NZB data found in download metadata".into(),
         ));
     };
+    let critical_health = crate::protocol::usenet::critical_health(
+        &crate::protocol::usenet::nzb::parse_nzb(&nzb_data)?,
+    );
+    // A new attempt has no verdict yet.
+    storage
+        .merge_download_metadata(download_id, &serde_json::json!({ "failure": null }))
+        .await?;
 
     let _ = progress_tx.send(DownloadProgress {
         bytes_downloaded: 0,
@@ -1054,6 +1080,26 @@ async fn run_usenet_download(
         total_ok + total_failed
     );
 
+    // Health as NZBGet reports it: the share of articles fetched, per mille.
+    let total_articles = total_ok + total_failed;
+    let health = if total_articles == 0 {
+        1000
+    } else {
+        (u64::from(total_ok) * 1000 / u64::from(total_articles)) as u32
+    };
+    storage
+        .merge_download_metadata(
+            download_id,
+            &serde_json::json!({
+                "total_articles": total_articles,
+                "success_articles": total_ok,
+                "failed_articles": total_failed,
+                "health": health,
+                "critical_health": critical_health,
+            }),
+        )
+        .await?;
+
     let _ = progress_tx.send(DownloadProgress {
         bytes_downloaded: total_bytes,
         total_bytes: Some(total_bytes),
@@ -1067,6 +1113,91 @@ async fn run_usenet_download(
         .unwrap_or_else(|| download_dir.clone());
 
     Ok((total_bytes, output_path))
+}
+
+/// Why a finished Usenet transfer did not yield the release, as stored in
+/// the download's metadata (`failure`) and reported by the NZBGet API.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReleaseFailure {
+    /// More articles are missing than the PAR2 recovery data can make up.
+    Health,
+    /// par2 could not repair the release.
+    Par,
+    /// An archive of the release could not be unpacked.
+    Unpack,
+}
+
+impl ReleaseFailure {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ReleaseFailure::Health => "health",
+            ReleaseFailure::Par => "par",
+            ReleaseFailure::Unpack => "unpack",
+        }
+    }
+}
+
+/// Check and post-process a Usenet download whose articles were fetched,
+/// and record the outcome in its metadata (`failure`, `par_status`,
+/// `unpack_status`). `Err` carries the error message: a broken release
+/// (with `failure` set) or a problem on this machine (`failure` null).
+async fn finish_usenet(
+    storage: &Storage,
+    id: &str,
+    dir: &std::path::Path,
+    pp_config: &postprocess::PostProcessConfig,
+) -> Result<(), String> {
+    let metadata = storage
+        .get_download_metadata(id)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|m| serde_json::from_str::<serde_json::Value>(&m).ok())
+        .unwrap_or_default();
+    let health = metadata["health"].as_u64().unwrap_or(1000);
+    let critical = metadata["critical_health"].as_u64().unwrap_or(1000);
+
+    let record = |failure: Option<ReleaseFailure>, par: &str, unpack: &str| {
+        let fields = serde_json::json!({
+            "failure": failure.map(ReleaseFailure::as_str),
+            "par_status": par,
+            "unpack_status": unpack,
+        });
+        async move {
+            if let Err(e) = storage.merge_download_metadata(id, &fields).await {
+                warn!("Could not record the Usenet result of {id}: {e}");
+            }
+        }
+    };
+
+    if health < critical {
+        // Not even PAR2 can make up for what is missing; NZBGet does not
+        // try either.
+        record(Some(ReleaseFailure::Health), "NONE", "NONE").await;
+        return Err(format!(
+            "Too many articles missing: health {health}‰ is below the critical {critical}‰"
+        ));
+    }
+
+    let outcome = match postprocess::run_usenet_pipeline(dir, pp_config).await {
+        Ok(outcome) => outcome,
+        Err(e) => {
+            warn!("Usenet post-processing failed for {id}: {e}");
+            record(None, "NONE", "NONE").await;
+            return Err(format!("Post-processing failed: {e}"));
+        }
+    };
+    let (par, unpack) = (outcome.par.as_str(), outcome.unpack.as_str());
+    if outcome.par == postprocess::StageStatus::Failure {
+        record(Some(ReleaseFailure::Par), par, unpack).await;
+        return Err("PAR2 repair failed".into());
+    }
+    if outcome.unpack == postprocess::StageStatus::Failure {
+        record(Some(ReleaseFailure::Unpack), par, unpack).await;
+        return Err("Unpacking failed".into());
+    }
+    record(None, par, unpack).await;
+    Ok(())
 }
 
 fn detect_protocol(url: &str) -> Protocol {

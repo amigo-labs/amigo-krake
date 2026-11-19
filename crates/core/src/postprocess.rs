@@ -119,11 +119,11 @@ fn extract_rar(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
     let rar = unrar::Archive::new(archive);
     let mut open = rar
         .open_for_processing()
-        .map_err(|e| crate::Error::Other(format!("Failed to open RAR archive: {e}")))?;
+        .map_err(|e| rar_error("Failed to open RAR archive", e))?;
 
     while let Some(header) = open
         .read_header()
-        .map_err(|e| crate::Error::Other(format!("RAR header error: {e}")))?
+        .map_err(|e| rar_error("RAR header error", e))?
     {
         let name = header.entry().filename.to_string_lossy().to_string();
         // extract_with_base writes to output_dir + the entry's *raw* path, so a
@@ -133,18 +133,32 @@ fn extract_rar(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
             debug!("Extracting: {name}");
             header
                 .extract_with_base(output_dir)
-                .map_err(|e| crate::Error::Other(format!("RAR extract error for {name}: {e}")))?
+                .map_err(|e| rar_error(&format!("RAR extract error for {name}"), e))?
         } else {
             warn!(
                 "RAR entry {name:?} escapes output directory — skipping (path traversal blocked)"
             );
             header
                 .skip()
-                .map_err(|e| crate::Error::Other(format!("RAR skip error for {name}: {e}")))?
+                .map_err(|e| rar_error(&format!("RAR skip error for {name}"), e))?
         };
     }
 
     Ok(())
+}
+
+/// A libunrar error: writing the output (or memory) failing is a problem on
+/// this machine and becomes an IO error; anything else is the archive's
+/// fault.
+fn rar_error(context: &str, e: unrar::error::UnrarError) -> crate::Error {
+    use unrar::error::Code;
+    let message = format!("{context}: {e}");
+    match e.code {
+        Code::ECreate | Code::EWrite | Code::EClose | Code::NoMemory => {
+            crate::Error::Io(std::io::Error::other(message))
+        }
+        _ => crate::Error::Other(message),
+    }
 }
 
 /// Cap on cumulative extracted bytes per archive. Real-world Usenet/HTTP
@@ -370,6 +384,44 @@ fn extract_tar(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
     )
 }
 
+/// How a post-processing stage of a Usenet download ended, in NZBGet's
+/// terms (`ParStatus`, `UnpackStatus`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StageStatus {
+    /// The stage had nothing to do, was switched off, or could not run here
+    /// (e.g. `par2` is not installed).
+    None,
+    Success,
+    /// The release could not be repaired or unpacked.
+    Failure,
+}
+
+impl StageStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            StageStatus::None => "NONE",
+            StageStatus::Success => "SUCCESS",
+            StageStatus::Failure => "FAILURE",
+        }
+    }
+}
+
+/// What post-processing made of a Usenet download.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UsenetPostOutcome {
+    pub par: StageStatus,
+    pub unpack: StageStatus,
+}
+
+/// Why an external tool did not succeed.
+#[derive(Debug)]
+enum ToolError {
+    /// The tool could not be started (not installed, not executable).
+    NotRun(String),
+    /// The tool ran and reported failure.
+    Failed(String),
+}
+
 /// Run the full Usenet post-processing pipeline for a directory of downloaded files.
 ///
 /// **Modes:**
@@ -382,53 +434,79 @@ fn extract_tar(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
 ///   Lower peak CPU/RAM — recommended for Raspberry Pi, low-power NAS.
 /// - `sequential_postprocess = false` (default): PAR2 and extraction can overlap
 ///   where files are independent.
+///
+/// A release that par2 cannot repair is not unpacked. `Err` means a problem
+/// on this machine (e.g. a write error), not a broken release.
 pub async fn run_usenet_pipeline(
     download_dir: &Path,
     config: &PostProcessConfig,
-) -> Result<(), crate::Error> {
+) -> Result<UsenetPostOutcome, crate::Error> {
+    // PAR2 must complete before extraction for data integrity, in both
+    // modes; in the future the standard mode could overlap independent files.
     if config.sequential_postprocess {
-        // Sequential mode: PAR2 first, then extract. No parallelism.
         info!("Post-processing (sequential mode)");
-        run_par2_phase(download_dir, config)?;
-        run_extract_phase(download_dir, config)?;
     } else {
-        // Default mode: PAR2 first (must complete before extract for data integrity),
-        // then extract. In the future this could overlap independent files.
         info!("Post-processing (standard mode)");
-        run_par2_phase(download_dir, config)?;
-        run_extract_phase(download_dir, config)?;
     }
-
-    Ok(())
+    let par = run_par2_phase(download_dir, config, run_tool);
+    if par == StageStatus::Failure {
+        return Ok(UsenetPostOutcome {
+            par,
+            unpack: StageStatus::None,
+        });
+    }
+    let unpack = run_extract_phase(download_dir, config)?;
+    Ok(UsenetPostOutcome { par, unpack })
 }
 
-/// PAR2 verify and optional repair phase.
-fn run_par2_phase(download_dir: &Path, config: &PostProcessConfig) -> Result<(), crate::Error> {
+/// PAR2 verify and optional repair phase. `run` starts the `par2` tool.
+fn run_par2_phase(
+    download_dir: &Path,
+    config: &PostProcessConfig,
+    run: impl Fn(&str, &[&str]) -> Result<(), ToolError>,
+) -> StageStatus {
     if !config.par2_repair {
-        return Ok(());
+        return StageStatus::None;
     }
 
     let Some(par2_file) = find_par2_file(download_dir) else {
-        return Ok(());
+        return StageStatus::None;
+    };
+    let par2_path = par2_file.to_string_lossy();
+
+    let repair = || match run("par2", &["r", &par2_path]) {
+        Ok(()) => {
+            info!("PAR2 repair successful");
+            StageStatus::Success
+        }
+        Err(ToolError::Failed(e)) => {
+            warn!("PAR2 repair failed: {e}");
+            StageStatus::Failure
+        }
+        Err(ToolError::NotRun(e)) => {
+            warn!("PAR2 repair skipped: {e}");
+            StageStatus::None
+        }
     };
 
-    if config.selective_par2 {
+    let status = if config.selective_par2 {
         // Selective: verify with index only, load recovery volumes only on demand
         info!("PAR2 verify (selective — index only): {:?}", par2_file);
-
-        match run_external("par2", &["v", &par2_file.to_string_lossy()]) {
+        match run("par2", &["v", &par2_path]) {
             Ok(()) => {
                 info!("PAR2 verification passed — no repair needed, recovery volumes not loaded");
+                StageStatus::Success
             }
-            Err(_) => {
+            Err(ToolError::NotRun(e)) => {
+                warn!("PAR2 verification skipped: {e}");
+                StageStatus::None
+            }
+            Err(ToolError::Failed(_)) => {
                 let vol_count = count_par2_volumes(download_dir);
                 info!(
                     "PAR2 verification found damage — loading {vol_count} recovery volumes for repair..."
                 );
-                match run_external("par2", &["r", &par2_file.to_string_lossy()]) {
-                    Ok(()) => info!("PAR2 repair successful"),
-                    Err(e) => warn!("PAR2 repair failed: {e}"),
-                }
+                repair()
             }
         }
     } else {
@@ -437,27 +515,29 @@ fn run_par2_phase(download_dir: &Path, config: &PostProcessConfig) -> Result<(),
             "PAR2 verify+repair (full — all volumes loaded): {:?}",
             par2_file
         );
+        repair()
+    };
 
-        match run_external("par2", &["r", &par2_file.to_string_lossy()]) {
-            Ok(()) => info!("PAR2 verify+repair complete"),
-            Err(e) => warn!("PAR2 verify+repair failed: {e}"),
-        }
-    }
-
-    if config.par2_delete_after {
+    // A failed repair keeps its PAR2 files, so it can be retried by hand.
+    if config.par2_delete_after && status != StageStatus::Failure {
         delete_par2_files(download_dir);
     }
 
-    Ok(())
+    status
 }
 
-/// Archive extraction phase.
-fn run_extract_phase(download_dir: &Path, config: &PostProcessConfig) -> Result<(), crate::Error> {
+/// Archive extraction phase. An archive that cannot be extracted is a
+/// `Failure`; a write error on this machine is an `Err`.
+fn run_extract_phase(
+    download_dir: &Path,
+    config: &PostProcessConfig,
+) -> Result<StageStatus, crate::Error> {
     if !config.auto_extract {
-        return Ok(());
+        return Ok(StageStatus::None);
     }
 
     let archives = find_archives(download_dir);
+    let mut status = StageStatus::None;
     for archive in &archives {
         info!("Extracting: {:?}", archive);
         let result = match archive_type(archive) {
@@ -470,19 +550,30 @@ fn run_extract_phase(download_dir: &Path, config: &PostProcessConfig) -> Result<
 
         match result {
             Ok(()) => {
+                if status == StageStatus::None {
+                    status = StageStatus::Success;
+                }
                 if config.delete_archives {
                     let _ = std::fs::remove_file(archive);
                 }
             }
-            Err(e) => warn!("Extraction failed for {:?}: {e}", archive),
+            Err(e @ crate::Error::Io(_)) => {
+                warn!("Extraction failed for {:?}: {e}", archive);
+                return Err(e);
+            }
+            Err(e) => {
+                warn!("Extraction failed for {:?}: {e}", archive);
+                status = StageStatus::Failure;
+            }
         }
     }
 
-    if config.delete_archives {
+    // A failed unpack keeps its archives, so it can be retried by hand.
+    if config.delete_archives && status != StageStatus::Failure {
         delete_rar_volumes(download_dir);
     }
 
-    Ok(())
+    Ok(status)
 }
 
 /// Find the PAR2 index file (shortest name, excludes .vol*.par2 recovery volumes).
@@ -579,6 +670,19 @@ fn delete_rar_volumes(dir: &Path) {
     }
 }
 
+fn run_tool(cmd: &str, args: &[&str]) -> Result<(), ToolError> {
+    let output = Command::new(cmd)
+        .args(args)
+        .output()
+        .map_err(|e| ToolError::NotRun(format!("Failed to run {cmd}: {e}. Is it installed?")))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(ToolError::Failed(format!("{cmd} failed: {stderr}")))
+    }
+}
+
 fn run_external(cmd: &str, args: &[&str]) -> Result<(), crate::Error> {
     let output = Command::new(cmd)
         .args(args)
@@ -595,6 +699,98 @@ fn run_external(cmd: &str, args: &[&str]) -> Result<(), crate::Error> {
 mod tests {
     use super::*;
     use std::assert_matches;
+
+    /// A `par2` stand-in answering verify (`v`) and repair (`r`).
+    fn par2(
+        verify: fn() -> Result<(), ToolError>,
+        repair: fn() -> Result<(), ToolError>,
+    ) -> impl Fn(&str, &[&str]) -> Result<(), ToolError> {
+        move |_cmd, args| if args[0] == "v" { verify() } else { repair() }
+    }
+
+    fn damaged() -> Result<(), ToolError> {
+        Err(ToolError::Failed("damaged".into()))
+    }
+
+    fn ok() -> Result<(), ToolError> {
+        Ok(())
+    }
+
+    fn par2_dir() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("release.par2"), b"index").unwrap();
+        std::fs::write(dir.path().join("release.vol0+1.par2"), b"recovery").unwrap();
+        dir
+    }
+
+    #[test]
+    fn a_repair_that_fails_is_a_par_failure_and_keeps_the_par2_files() {
+        let dir = par2_dir();
+        let status = run_par2_phase(
+            dir.path(),
+            &PostProcessConfig::default(),
+            par2(damaged, damaged),
+        );
+        assert_eq!(status, StageStatus::Failure);
+        assert!(dir.path().join("release.par2").exists());
+
+        let full = PostProcessConfig {
+            selective_par2: false,
+            ..PostProcessConfig::default()
+        };
+        assert_eq!(
+            run_par2_phase(dir.path(), &full, par2(ok, damaged)),
+            StageStatus::Failure
+        );
+    }
+
+    #[test]
+    fn a_verified_or_repaired_release_is_a_par_success() {
+        let config = PostProcessConfig::default();
+        let dir = par2_dir();
+        assert_eq!(
+            run_par2_phase(dir.path(), &config, par2(ok, damaged)),
+            StageStatus::Success
+        );
+        assert!(
+            !dir.path().join("release.par2").exists(),
+            "par2 files are cleaned up"
+        );
+        let dir = par2_dir();
+        assert_eq!(
+            run_par2_phase(dir.path(), &config, par2(damaged, ok)),
+            StageStatus::Success
+        );
+    }
+
+    #[test]
+    fn without_par2_files_or_the_par2_tool_there_is_no_par_verdict() {
+        let config = PostProcessConfig::default();
+        let empty = tempfile::tempdir().unwrap();
+        assert_eq!(
+            run_par2_phase(empty.path(), &config, par2(damaged, damaged)),
+            StageStatus::None
+        );
+
+        fn missing() -> Result<(), ToolError> {
+            Err(ToolError::NotRun("par2 not installed".into()))
+        }
+        let dir = par2_dir();
+        assert_eq!(
+            run_par2_phase(dir.path(), &config, par2(missing, missing)),
+            StageStatus::None
+        );
+    }
+
+    #[test]
+    fn an_archive_that_cannot_be_read_is_an_unpack_failure_and_is_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let rar = dir.path().join("release.rar");
+        std::fs::write(&rar, b"not a rar archive").unwrap();
+        let status = run_extract_phase(dir.path(), &PostProcessConfig::default()).unwrap();
+        assert_eq!(status, StageStatus::Failure);
+        assert!(rar.exists());
+    }
 
     /// Build a zip in memory containing one symlink entry pointing at an
     /// absolute path outside the output directory, plus a regular file.

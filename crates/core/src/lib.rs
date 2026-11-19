@@ -136,6 +136,11 @@ pub enum Error {
     #[error("server ignored Range request (200 instead of 206)")]
     RangeNotSupported,
 
+    /// A Usenet article is missing from every server, or arrived damaged:
+    /// a fault of the release, not of this machine or its connection.
+    #[error("article unavailable: {0}")]
+    ArticleUnavailable(String),
+
     #[error("{0}")]
     Other(String),
 }

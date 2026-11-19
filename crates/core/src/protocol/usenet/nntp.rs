@@ -194,6 +194,13 @@ impl NntpConnection {
         self.send_command(&format!("BODY {mid}")).await?;
         let resp = self.read_response().await?;
 
+        // 430: no article with that message-id; 423: no such article number.
+        if matches!(resp.code, 423 | 430) {
+            return Err(crate::Error::ArticleUnavailable(format!(
+                "BODY {mid}: {} {}",
+                resp.code, resp.message
+            )));
+        }
         if resp.code != 222 {
             return Err(crate::Error::Other(format!(
                 "BODY failed for {mid}: {} {}",
