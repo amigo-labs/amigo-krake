@@ -272,7 +272,7 @@ async fn fetch_and_process_feed(
         }
 
         let category = Some(feed.category.as_str()).filter(|c| !c.is_empty());
-        let added = match fetch_nzb(http_client, &url).await {
+        let added = match fetch_nzb(&url, false).await {
             Ok(nzb_data) => add_rss_nzb(coordinator, &url, &nzb_data, category).await,
             Err(e) => Err(e),
         };
@@ -294,35 +294,64 @@ async fn fetch_and_process_feed(
 /// Cap on an NZB fetched from a feed; real NZBs are a few MB at most.
 const MAX_NZB_BYTES: usize = 64 * 1024 * 1024;
 
-/// Fetch the NZB a feed item links to.
-async fn fetch_nzb(http_client: &reqwest::Client, url: &str) -> Result<String, krake_core::Error> {
-    // The item URL comes from the feed, so it gets the same SSRF guard as
-    // the feed itself.
-    crate::net_guard::validate_outbound_url(url, false)
-        .await
-        .map_err(|e| krake_core::Error::Other(format!("NZB URL rejected: {e}")))?;
-    let resp = http_client
-        .get(url)
-        .header("User-Agent", "krake/0.1.0")
-        .send()
-        .await?
+/// Fetch an NZB from `url`: an RSS item's link, or a URL given to NZBGet's
+/// `append`. Both come from outside, so every hop of a redirect gets the
+/// SSRF guard (unless `allow_private_targets`) and the body is capped at
+/// [`MAX_NZB_BYTES`].
+pub(crate) async fn fetch_nzb(
+    url: &str,
+    allow_private_targets: bool,
+) -> Result<String, krake_core::Error> {
+    const MAX_REDIRECTS: usize = 5;
+    let err = |msg: String| krake_core::Error::Other(msg);
+    // Redirects are followed here, so each target is checked.
+    let client = reqwest::Client::builder()
+        .user_agent("krake/0.1.0")
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(std::time::Duration::from_secs(60))
+        .build()?;
+    let mut current = reqwest::Url::parse(url).map_err(|e| err(format!("NZB URL {url}: {e}")))?;
+    let mut resp = None;
+    for _ in 0..=MAX_REDIRECTS {
+        crate::net_guard::validate_outbound_url(current.as_str(), allow_private_targets)
+            .await
+            .map_err(|e| err(format!("NZB URL rejected: {e}")))?;
+        let r = client.get(current.clone()).send().await?;
+        if !r.status().is_redirection() {
+            resp = Some(r);
+            break;
+        }
+        let location = r
+            .headers()
+            .get(reqwest::header::LOCATION)
+            .and_then(|l| l.to_str().ok())
+            .ok_or_else(|| err(format!("NZB URL {current} redirects without a location")))?;
+        current = current
+            .join(location)
+            .map_err(|e| err(format!("NZB URL {current} redirects to {location}: {e}")))?;
+    }
+    let mut resp = resp
+        .ok_or_else(|| {
+            err(format!(
+                "NZB URL {url}: more than {MAX_REDIRECTS} redirects"
+            ))
+        })?
         .error_for_status()?;
+    let too_large = || err(format!("NZB at {url} is larger than {MAX_NZB_BYTES} bytes"));
     if resp
         .content_length()
         .is_some_and(|len| len > MAX_NZB_BYTES as u64)
     {
-        return Err(krake_core::Error::Other(format!(
-            "NZB at {url} is too large"
-        )));
+        return Err(too_large());
     }
-    let body = resp.bytes().await?;
-    if body.len() > MAX_NZB_BYTES {
-        return Err(krake_core::Error::Other(format!(
-            "NZB at {url} is too large"
-        )));
+    let mut body = Vec::new();
+    while let Some(chunk) = resp.chunk().await? {
+        if body.len() + chunk.len() > MAX_NZB_BYTES {
+            return Err(too_large());
+        }
+        body.extend_from_slice(&chunk);
     }
-    String::from_utf8(body.to_vec())
-        .map_err(|e| krake_core::Error::Other(format!("NZB at {url} is not UTF-8: {e}")))
+    String::from_utf8(body).map_err(|e| err(format!("NZB at {url} is not UTF-8: {e}")))
 }
 
 /// Queue an NZB fetched from a feed as a Usenet download named after its
@@ -391,6 +420,23 @@ fn extract_nzb_links(xml: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn fetch_nzb_follows_redirects_and_guards_the_first_url() {
+        let app = axum::Router::new()
+            .route(
+                "/r",
+                axum::routing::get(|| async { axum::response::Redirect::temporary("/nzb") }),
+            )
+            .route("/nzb", axum::routing::get(|| async { "<nzb/>" }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let url = format!("http://127.0.0.1:{port}/r");
+        assert_eq!(fetch_nzb(&url, true).await.unwrap(), "<nzb/>");
+        assert!(fetch_nzb(&url, false).await.is_err());
+    }
 
     const NZB: &str = r#"<?xml version="1.0" encoding="utf-8"?>
 <nzb xmlns="http://www.newzbin.com/DTD/2003/nzb">

@@ -18,7 +18,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use tracing::{debug, info, warn};
 
-use krake_core::coordinator::Coordinator;
+use krake_core::coordinator::{Coordinator, Dupe, DupeMode, NzbOptions};
 use krake_core::queue::QueueStatus;
 use krake_core::storage::DownloadRow;
 
@@ -253,6 +253,16 @@ async fn handle_status(coordinator: &Arc<Coordinator>) -> RpcResult {
 }
 
 async fn handle_append(coordinator: &Arc<Coordinator>, params: &[Value]) -> RpcResult {
+    append_nzb(coordinator, params, false).await
+}
+
+/// `append`; `allow_private_targets` lets an NZB URL point at this network
+/// (tests only).
+async fn append_nzb(
+    coordinator: &Arc<Coordinator>,
+    params: &[Value],
+    allow_private_targets: bool,
+) -> RpcResult {
     // append(NZBFilename, NZBContent, Category, Priority, AddToTop, AddPaused, DupeKey, DupeScore, DupeMode, PPParameters)
     let nzb_filename = params
         .first()
@@ -260,60 +270,68 @@ async fn handle_append(coordinator: &Arc<Coordinator>, params: &[Value]) -> RpcR
         .unwrap_or("upload.nzb");
     let nzb_content = params.get(1).and_then(|v| v.as_str()).unwrap_or("");
     let category = params.get(2).and_then(|v| v.as_str()).unwrap_or("");
-    let _priority = params.get(3).and_then(|v| v.as_i64()).unwrap_or(0);
-    let _add_paused = params.get(5).and_then(|v| v.as_bool()).unwrap_or(false);
+    let priority = params.get(3).and_then(|v| v.as_i64()).unwrap_or(0);
+    // AddToTop (param 4) is not supported: the queue is ordered by priority.
+    let add_paused = params.get(5).and_then(|v| v.as_bool()).unwrap_or(false);
+    let dupe_key = params.get(6).and_then(|v| v.as_str()).unwrap_or("");
+    let dupe_score = params.get(7).and_then(|v| v.as_i64()).unwrap_or(0);
+    let dupe_mode = params.get(8).and_then(|v| v.as_str()).unwrap_or("SCORE");
 
     if nzb_content.is_empty() {
         return Err((-32602, "NZBContent is required".into()));
     }
 
-    // NZBContent can be base64-encoded NZB data or a URL
-    let nzb_data = if nzb_content.starts_with("http://") || nzb_content.starts_with("https://") {
-        // URL mode — we'd need to fetch it, for now just add as URL download.
-        // Guard against SSRF to internal targets, consistent with the REST
-        // download paths.
-        if let Err(e) = crate::net_guard::validate_outbound_url(nzb_content, false).await {
-            return Err((-32000, format!("URL rejected: {e}")));
-        }
-        match coordinator
-            .add_download(nzb_content, Some(nzb_filename.to_string()))
+    // NZBContent is the NZB, base64-encoded, or a URL to fetch it from.
+    let nzb_str = if nzb_content.starts_with("http://") || nzb_content.starts_with("https://") {
+        crate::background::fetch_nzb(nzb_content, allow_private_targets)
             .await
-        {
-            Ok(id) => {
-                info!("NZBGet append (URL): {nzb_filename} → {id}");
-                // Return a positive integer as NZBID
-                let nzbid = id_to_nzbid(&id);
-                return Ok(json!(nzbid));
-            }
-            Err(e) => return Err((-32000, format!("Failed to add download: {e}"))),
-        }
+            .map_err(|e| (-32000, format!("Failed to fetch NZB: {e}")))?
     } else {
-        // Base64-encoded NZB content
-        base64::engine::general_purpose::STANDARD
+        let nzb_data = base64::engine::general_purpose::STANDARD
             .decode(nzb_content)
-            .map_err(|e| (-32602, format!("Invalid base64 NZB content: {e}")))?
+            .map_err(|e| (-32602, format!("Invalid base64 NZB content: {e}")))?;
+        String::from_utf8(nzb_data).map_err(|e| (-32602, format!("Invalid UTF-8 in NZB: {e}")))?
     };
-
-    let nzb_str =
-        String::from_utf8(nzb_data).map_err(|e| (-32602, format!("Invalid UTF-8 in NZB: {e}")))?;
 
     // Validate NZB
     krake_core::protocol::usenet::nzb::parse_nzb(&nzb_str)
         .map_err(|e| (-32602, format!("Invalid NZB: {e}")))?;
 
+    let options = NzbOptions {
+        category: Some(category.to_string()),
+        priority: nzbget_priority(priority),
+        paused: add_paused,
+        dupe: Some(Dupe {
+            key: dupe_key.to_string(),
+            score: dupe_score,
+            mode: DupeMode::parse(dupe_mode),
+        }),
+        // *arr tools send a category; their releases must yield media.
+        media_check: !category.trim().is_empty(),
+    };
     // NZBGet names a download after its NZB file, without the extension.
     let name = nzb_name(nzb_filename);
     match coordinator
-        .add_nzb_download(name, &nzb_str, Some(category))
+        .add_nzb_download_with(name, &nzb_str, &options)
         .await
     {
-        Ok(id) => {
-            info!("NZBGet append: {nzb_filename} → {id}");
-            let nzbid = id_to_nzbid(&id);
-            Ok(json!(nzbid))
+        Ok(added) => {
+            if added.dupe {
+                info!("NZBGet append: {nzb_filename} → {} (duplicate)", added.id);
+            } else {
+                info!("NZBGet append: {nzb_filename} → {}", added.id);
+            }
+            Ok(json!(id_to_nzbid(&added.id)))
         }
         Err(e) => Err((-32000, format!("Failed to add download: {e}"))),
     }
+}
+
+/// krake's queue priority for NZBGet's: krake orders by priority, higher
+/// first and 0 normal, so NZBGet's -100/-50/0/50/100/900 are kept as they
+/// are; anything beyond them is clamped to that range.
+fn nzbget_priority(priority: i64) -> i32 {
+    priority.clamp(-100, 900) as i32
 }
 
 /// The download name NZBGet derives from an NZB's file name: the name
@@ -344,9 +362,23 @@ fn category(info: &Value) -> &str {
     info["category"].as_str().unwrap_or_default()
 }
 
+/// The duplicate key `append` stored with a download; empty when none.
+fn dupe_key(info: &Value) -> &str {
+    info["dupe_key"].as_str().unwrap_or_default()
+}
+
+fn dupe_score(info: &Value) -> i64 {
+    info["dupe_score"].as_i64().unwrap_or(0)
+}
+
+fn dupe_mode(info: &Value) -> &str {
+    info["dupe_mode"].as_str().unwrap_or("SCORE")
+}
+
 /// NZBGet's `Status`, `ParStatus`, `UnpackStatus` and `MoveStatus` of a
 /// finished download. A broken release reads `FAILURE/HEALTH`,
-/// `FAILURE/PAR` or `FAILURE/UNPACK`; a failure on this machine (disk full,
+/// `FAILURE/PAR`, `FAILURE/UNPACK` or, without media, `FAILURE/BAD`; a
+/// skipped duplicate `DELETED/DUPE`; a failure on this machine (disk full,
 /// server unreachable) reads `FAILURE/NONE`, so a client does not blame
 /// the release.
 fn history_status(status: &str, info: &Value) -> [&'static str; 4] {
@@ -369,6 +401,10 @@ fn history_status(status: &str, info: &Value) -> [&'static str; 4] {
         Some("health") => "FAILURE/HEALTH",
         Some("par") => "FAILURE/PAR",
         Some("unpack") => "FAILURE/UNPACK",
+        // No media file: NZBGet's status for a release marked bad (as its
+        // fake-detection scripts do).
+        Some("media") => "FAILURE/BAD",
+        Some("dupe") => "DELETED/DUPE",
         _ => "FAILURE/NONE",
     };
     [
@@ -433,6 +469,9 @@ async fn handle_listgroups(coordinator: &Arc<Coordinator>) -> RpcResult {
                 "CriticalHealth": 1000,
                 "MaxPriority": r.priority,
                 "MinPriority": r.priority,
+                "DupeKey": dupe_key(&info),
+                "DupeScore": dupe_score(&info),
+                "DupeMode": dupe_mode(&info),
                 "MinPostTime": 0,
                 "MaxPostTime": 0,
                 "Parameters": [],
@@ -479,6 +518,7 @@ async fn handle_history(coordinator: &Arc<Coordinator>) -> RpcResult {
             let nzbid = id_to_nzbid(&r.id);
             let [status, par_status, unpack_status, move_status] = history_status(&r.status, &info);
             let count = |key: &str, default: u64| info[key].as_u64().unwrap_or(default);
+            let is_dupe = info["failure"] == "dupe";
 
             let mut item = json!({
                 "NZBID": nzbid,
@@ -502,18 +542,18 @@ async fn handle_history(coordinator: &Arc<Coordinator>) -> RpcResult {
                 "UnpackStatus": unpack_status,
                 "MoveStatus": move_status,
                 "ScriptStatus": "NONE",
-                "DeleteStatus": "NONE",
-                "MarkStatus": "NONE",
+                "DeleteStatus": if is_dupe { "DUPE" } else { "NONE" },
+                "MarkStatus": if info["failure"] == "media" { "BAD" } else { "NONE" },
                 "UrlStatus": "NONE",
                 "TotalArticles": count("total_articles", 0),
                 "SuccessArticles": count("success_articles", 0),
                 "FailedArticles": count("failed_articles", 0),
                 "Health": count("health", 1000),
                 "CriticalHealth": count("critical_health", 1000),
-                "DupeKey": "",
-                "DupeScore": 0,
-                "DupeMode": "SCORE",
-                "Deleted": false,
+                "DupeKey": dupe_key(&info),
+                "DupeScore": dupe_score(&info),
+                "DupeMode": dupe_mode(&info),
+                "Deleted": is_dupe,
                 "DownloadTimeSec": 0,
                 "PostTotalTimeSec": 0,
                 "ParTimeSec": 0,
@@ -968,6 +1008,233 @@ mod tests {
             .await
             .unwrap();
         coordinator.storage().record_history(id).await.unwrap();
+    }
+
+    /// `append`'s parameters, as NZBGet takes them.
+    #[derive(Default)]
+    struct Append<'a> {
+        filename: &'a str,
+        content: &'a str,
+        category: &'a str,
+        priority: i64,
+        paused: bool,
+        dupe_key: &'a str,
+        dupe_score: i64,
+        dupe_mode: &'a str,
+    }
+
+    impl Append<'_> {
+        fn params(&self) -> Vec<Value> {
+            vec![
+                json!(self.filename),
+                json!(self.content),
+                json!(self.category),
+                json!(self.priority),
+                json!(false),
+                json!(self.paused),
+                json!(self.dupe_key),
+                json!(self.dupe_score),
+                json!(self.dupe_mode),
+                json!([]),
+            ]
+        }
+    }
+
+    fn b64(nzb: &str) -> String {
+        base64::engine::general_purpose::STANDARD.encode(nzb)
+    }
+
+    async fn metadata_of(coordinator: &Arc<Coordinator>, id: &str) -> Value {
+        serde_json::from_str(
+            &coordinator
+                .storage()
+                .get_download_metadata(id)
+                .await
+                .unwrap()
+                .expect("metadata"),
+        )
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn append_queues_with_the_priority_and_paused_given() {
+        let root = tempfile::tempdir().unwrap();
+        let coordinator = idle_coordinator(root.path());
+        let params = Append {
+            filename: "Paused.Release.nzb",
+            content: &b64(&release_nzb("p")),
+            category: "tv",
+            priority: 100,
+            paused: true,
+            ..Append::default()
+        }
+        .params();
+        let nzbid = handle_append(&coordinator, &params)
+            .await
+            .unwrap()
+            .as_i64()
+            .unwrap();
+
+        let row = row_of(&coordinator, nzbid).await;
+        assert_eq!(row.priority, 100);
+        assert_eq!(row.status, "paused");
+        let groups = handle_listgroups(&coordinator).await.unwrap();
+        let e = entry(&groups, nzbid);
+        assert_eq!(e["Status"], "PAUSED");
+        assert_eq!(e["MaxPriority"], 100);
+    }
+
+    #[tokio::test]
+    async fn append_skips_a_duplicate_into_the_history() {
+        let root = tempfile::tempdir().unwrap();
+        let coordinator = idle_coordinator(root.path());
+        let add = |name: &'static str, score: i64, mode: &'static str| {
+            let coordinator = coordinator.clone();
+            async move {
+                let params = Append {
+                    filename: name,
+                    content: &b64(&release_nzb(name)),
+                    category: "tv",
+                    dupe_key: "show-s01e01",
+                    dupe_score: score,
+                    dupe_mode: mode,
+                    ..Append::default()
+                }
+                .params();
+                handle_append(&coordinator, &params)
+                    .await
+                    .unwrap()
+                    .as_i64()
+                    .unwrap()
+            }
+        };
+        let first = add("First.nzb", 100, "SCORE").await;
+        let groups = handle_listgroups(&coordinator).await.unwrap();
+        let e = entry(&groups, first);
+        assert_eq!(e["DupeKey"], "show-s01e01");
+        assert_eq!(e["DupeScore"], 100);
+        assert_eq!(e["DupeMode"], "SCORE");
+
+        let dupe = add("Second.nzb", 50, "SCORE").await;
+        assert!(dupe > 0, "a skipped duplicate still has an NZBID");
+        let groups = handle_listgroups(&coordinator).await.unwrap();
+        assert!(
+            groups
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|g| g["NZBID"] != dupe),
+            "a duplicate is not queued"
+        );
+        let history = handle_history(&coordinator).await.unwrap();
+        let e = entry(&history, dupe);
+        assert_eq!(e["Status"], "DELETED/DUPE");
+        assert_eq!(e["DeleteStatus"], "DUPE");
+        assert_eq!(e["DupeKey"], "show-s01e01");
+        assert_eq!(e["DupeScore"], 50);
+        assert_eq!(e["Category"], "tv");
+
+        // FORCE downloads it anyway.
+        let forced = add("Third.nzb", 0, "FORCE").await;
+        assert_eq!(row_of(&coordinator, forced).await.status, "queued");
+    }
+
+    #[tokio::test]
+    async fn append_with_a_url_fetches_the_nzb_into_a_usenet_download() {
+        let nzb = release_nzb("u");
+        let served = nzb.clone();
+        let app = axum::Router::new().route(
+            "/get/Some.Release.nzb",
+            axum::routing::get(move || async move { served }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let root = tempfile::tempdir().unwrap();
+        let coordinator = idle_coordinator(root.path());
+        let url = format!("http://127.0.0.1:{port}/get/Some.Release.nzb");
+        let params = Append {
+            filename: "Some.Release.nzb",
+            content: &url,
+            category: "movies",
+            ..Append::default()
+        }
+        .params();
+        let nzbid = append_nzb(&coordinator, &params, true)
+            .await
+            .expect("append by URL")
+            .as_i64()
+            .unwrap();
+
+        let row = row_of(&coordinator, nzbid).await;
+        assert_eq!(row.protocol, "usenet");
+        assert_eq!(row.filename.as_deref(), Some("Some.Release"));
+        assert_eq!(
+            std::path::PathBuf::from(row.download_dir.unwrap()),
+            root.path().join("downloads/movies/Some.Release")
+        );
+        let metadata = metadata_of(&coordinator, &row.id).await;
+        assert_eq!(metadata["nzb_data"].as_str(), Some(nzb.as_str()));
+        assert_eq!(metadata["category"], "movies");
+
+        // The SSRF guard still applies to a real append.
+        assert!(handle_append(&coordinator, &params).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn append_checks_for_media_only_with_a_category() {
+        let root = tempfile::tempdir().unwrap();
+        let coordinator = idle_coordinator(root.path());
+        for (category, checked) in [("movies", true), ("", false)] {
+            let params = Append {
+                filename: "R.nzb",
+                content: &b64(&release_nzb(category)),
+                category,
+                ..Append::default()
+            }
+            .params();
+            let nzbid = handle_append(&coordinator, &params)
+                .await
+                .unwrap()
+                .as_i64()
+                .unwrap();
+            let id = row_of(&coordinator, nzbid).await.id;
+            assert_eq!(
+                metadata_of(&coordinator, &id).await["media_check"],
+                checked,
+                "category {category:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn history_reports_a_release_without_media_as_bad() {
+        let root = tempfile::tempdir().unwrap();
+        let coordinator = idle_coordinator(root.path());
+        let nzbid = append(
+            &coordinator,
+            &format!("{RELEASE}.nzb"),
+            &release_nzb("m"),
+            "movies",
+        )
+        .await;
+        let id = row_of(&coordinator, nzbid).await.id;
+        finish(
+            &coordinator,
+            &id,
+            QueueStatus::Failed,
+            json!({"failure": "media", "health": 1000, "critical_health": 1000,
+                   "par_status": "SUCCESS", "unpack_status": "SUCCESS"}),
+        )
+        .await;
+        let history = handle_history(&coordinator).await.unwrap();
+        let e = entry(&history, nzbid);
+        assert_eq!(e["Status"], "FAILURE/BAD");
+        assert_eq!(e["MarkStatus"], "BAD");
+        assert_eq!(e["ParStatus"], "SUCCESS");
+        assert_eq!(e["UnpackStatus"], "SUCCESS");
+        assert_eq!(e["MoveStatus"], "NONE");
     }
 
     #[tokio::test]
