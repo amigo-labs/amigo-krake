@@ -1,6 +1,6 @@
 //! Post-processing pipeline: extraction, verification, cleanup.
 
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::Path;
 use std::process::Command;
 
@@ -249,7 +249,8 @@ fn extract_zip(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
             }
             let mut out_file = std::fs::File::create(&out_path)?;
             let mut limited = (&mut entry).take(remaining);
-            let written = std::io::copy(&mut limited, &mut out_file)?;
+            let written = copy_entry(&mut limited, &mut out_file)
+                .map_err(|e| e.into_error(&format!("ZIP entry {name:?}")))?;
             total_extracted = total_extracted.saturating_add(written);
             // If the entry's declared size exceeds the budget, or we hit
             // exactly the budget without reaching EOF, we're under attack.
@@ -330,6 +331,7 @@ fn extract_7z(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
     std::fs::create_dir_all(output_dir)?;
     let mut reader = sevenz_rust2::ArchiveReader::open(archive, sevenz_rust2::Password::empty())
         .map_err(map_err)?;
+    let mut write_error = None;
     reader
         .for_each_entries(|entry, data| {
             if !is_safe_archive_entry(entry.name()) {
@@ -343,10 +345,75 @@ fn extract_7z(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
                 return Ok(true); // skip this entry, keep going
             }
             let dest = output_dir.join(entry.name().replace('\\', "/"));
-            sevenz_rust2::default_entry_extract_fn(entry, data, &dest)
+            match write_7z_entry(entry, data, &dest) {
+                Ok(()) => Ok(true),
+                Err(CopyError::Write(e)) => {
+                    // Stop here; reported as local below.
+                    write_error = Some(e);
+                    Ok(false)
+                }
+                Err(CopyError::Read(e)) => Err(e.into()),
+            }
         })
         .map_err(map_err)?;
+    match write_error {
+        Some(e) => Err(crate::Error::Io(e)),
+        None => Ok(()),
+    }
+}
+
+/// Write one 7z entry to `dest`, telling a write error (this machine) from
+/// a read error (the archive).
+fn write_7z_entry(
+    entry: &sevenz_rust2::ArchiveEntry,
+    data: &mut dyn Read,
+    dest: &Path,
+) -> Result<(), CopyError> {
+    if entry.is_directory() {
+        return std::fs::create_dir_all(dest).map_err(CopyError::Write);
+    }
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent).map_err(CopyError::Write)?;
+    }
+    let mut file = std::fs::File::create(dest).map_err(CopyError::Write)?;
+    copy_entry(data, &mut file)?;
     Ok(())
+}
+
+/// An error while copying an archive entry out: reading it (the archive's
+/// fault) or writing it (this machine's).
+#[derive(Debug)]
+enum CopyError {
+    Read(std::io::Error),
+    Write(std::io::Error),
+}
+
+impl CopyError {
+    /// A read error is the archive's fault, a write error a local IO error.
+    fn into_error(self, context: &str) -> crate::Error {
+        match self {
+            CopyError::Read(e) => crate::Error::Other(format!("{context}: {e}")),
+            CopyError::Write(e) => crate::Error::Io(e),
+        }
+    }
+}
+
+/// `std::io::copy`, keeping read and write errors apart.
+fn copy_entry(reader: &mut dyn Read, writer: &mut dyn Write) -> Result<u64, CopyError> {
+    let mut buf = vec![0u8; 64 * 1024];
+    let mut total = 0u64;
+    loop {
+        let n = match reader.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(CopyError::Read(e)),
+        };
+        writer.write_all(&buf[..n]).map_err(CopyError::Write)?;
+        total += n as u64;
+    }
+    writer.flush().map_err(CopyError::Write)?;
+    Ok(total)
 }
 
 fn extract_tar(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
@@ -532,6 +599,31 @@ fn run_extract_phase(
     download_dir: &Path,
     config: &PostProcessConfig,
 ) -> Result<StageStatus, crate::Error> {
+    run_extract_phase_with(download_dir, config, local_write_problem)
+}
+
+/// Whether writing to `dir` fails on this machine (disk full, no
+/// permission, read-only file system); `None` when it works.
+fn local_write_problem(dir: &Path) -> Option<std::io::Error> {
+    // Big enough that a disk an extraction has just filled cannot take it.
+    const PROBE_BYTES: usize = 1024 * 1024;
+    let probe = dir.join(format!(".krake-write-probe-{}", std::process::id()));
+    let result = (|| {
+        let mut file = std::fs::File::create(&probe)?;
+        file.write_all(&vec![0u8; PROBE_BYTES])?;
+        file.sync_all()
+    })();
+    let _ = std::fs::remove_file(&probe);
+    result.err()
+}
+
+/// [`run_extract_phase`] with the write probe it uses after a failed
+/// extraction.
+fn run_extract_phase_with(
+    download_dir: &Path,
+    config: &PostProcessConfig,
+    probe: fn(&Path) -> Option<std::io::Error>,
+) -> Result<StageStatus, crate::Error> {
     if !config.auto_extract {
         return Ok(StageStatus::None);
     }
@@ -562,6 +654,19 @@ fn run_extract_phase(
                 return Err(e);
             }
             Err(e) => {
+                // Archive libraries do not always say a write failed (libunrar
+                // has codes beyond ECreate/EWrite, tar is an external tool),
+                // so check the disk before blaming the archive.
+                if let Some(local) = probe(download_dir) {
+                    warn!(
+                        "Extraction failed for {:?}: {e}; {download_dir:?} cannot be written: {local}",
+                        archive
+                    );
+                    return Err(crate::Error::Io(std::io::Error::new(
+                        local.kind(),
+                        format!("cannot write to {download_dir:?} ({local}) while extracting: {e}"),
+                    )));
+                }
                 warn!("Extraction failed for {:?}: {e}", archive);
                 status = StageStatus::Failure;
             }
@@ -790,6 +895,92 @@ mod tests {
         let status = run_extract_phase(dir.path(), &PostProcessConfig::default()).unwrap();
         assert_eq!(status, StageStatus::Failure);
         assert!(rar.exists());
+    }
+
+    #[test]
+    fn a_zip_with_corrupt_data_is_an_unpack_failure_not_a_local_error() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("release.zip");
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+        zip.start_file(
+            "movie.mkv",
+            zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Stored),
+        )
+        .unwrap();
+        zip.write_all(b"PAYLOAD-PAYLOAD-PAYLOAD").unwrap();
+        zip.finish().unwrap();
+        // Corrupt the stored data: its CRC no longer matches.
+        let mut bytes = std::fs::read(&path).unwrap();
+        let at = bytes.windows(7).position(|w| w == b"PAYLOAD").unwrap();
+        bytes[at] = b'X';
+        std::fs::write(&path, bytes).unwrap();
+
+        let status = run_extract_phase(dir.path(), &PostProcessConfig::default())
+            .expect("a corrupt archive is the release's fault");
+        assert_eq!(status, StageStatus::Failure);
+    }
+
+    #[test]
+    fn a_7z_that_cannot_be_written_out_is_a_local_error() {
+        use sevenz_rust2::{ArchiveEntry, ArchiveWriter, SourceReader};
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("release.7z");
+        let mut writer = ArchiveWriter::create(&archive).unwrap();
+        writer
+            .push_archive_entries(
+                vec![ArchiveEntry::new_file("sub/movie.mkv")],
+                vec![SourceReader::new(std::io::Cursor::new(b"movie".to_vec()))],
+            )
+            .unwrap();
+        writer.finish().unwrap();
+        // `sub` is a file, so `sub/movie.mkv` cannot be written, even as root.
+        std::fs::write(dir.path().join("sub"), b"in the way").unwrap();
+
+        let result = run_extract_phase(dir.path(), &PostProcessConfig::default());
+        assert!(
+            matches!(result, Err(crate::Error::Io(_))),
+            "a write error is local: {result:?}"
+        );
+    }
+
+    #[test]
+    fn a_failed_extraction_on_a_disk_that_cannot_be_written_is_a_local_error() {
+        // Whatever an archive library reports, a disk that refuses writes is
+        // a problem on this machine.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("release.rar"), b"not a rar archive").unwrap();
+        fn full(_: &Path) -> Option<std::io::Error> {
+            Some(std::io::Error::new(
+                std::io::ErrorKind::StorageFull,
+                "no space left on device",
+            ))
+        }
+        fn fine(_: &Path) -> Option<std::io::Error> {
+            None
+        }
+        let config = PostProcessConfig::default();
+        assert!(matches!(
+            run_extract_phase_with(dir.path(), &config, full),
+            Err(crate::Error::Io(_))
+        ));
+        assert_eq!(
+            run_extract_phase_with(dir.path(), &config, fine).unwrap(),
+            StageStatus::Failure
+        );
+    }
+
+    #[test]
+    fn the_write_probe_reports_a_folder_it_cannot_write_to() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(local_write_problem(dir.path()).is_none());
+        // No probe file is left behind.
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+        // A "folder" that is a file cannot be written to, even as root.
+        let file = dir.path().join("file");
+        std::fs::write(&file, b"x").unwrap();
+        assert!(local_write_problem(&file).is_some());
     }
 
     /// Build a zip in memory containing one symlink entry pointing at an
