@@ -414,19 +414,108 @@ impl Coordinator {
             }
             Err(e) => return Err(e),
         }
-        // Cache the owner so event filtering doesn't hit the DB per event.
-        self.owners.lock().await.insert(id.clone(), owner);
-        let _ = self.event_tx.send(DownloadEvent::Added {
+        self.announce_and_start(&id, url, owner).await?;
+        Ok(id)
+    }
+
+    /// Add an NZB as a Usenet download named `name` (its release name).
+    ///
+    /// The NZB is stored with the row before the queue can start it, so the
+    /// transfer always finds its segments. Every NZB is a download of its
+    /// own, and its files go to a folder of their own,
+    /// `<download dir>/<category>/<name>`, where post-processing also unpacks
+    /// them. `category` is kept in the download's metadata.
+    pub async fn add_nzb_download(
+        &self,
+        name: &str,
+        nzb_data: &str,
+        category: Option<&str>,
+    ) -> Result<String, crate::Error> {
+        let nzb = crate::protocol::usenet::nzb::parse_nzb(nzb_data)?;
+        let file_count = nzb.files.len();
+        let total_bytes: u64 = nzb.files.iter().map(|f| f.total_bytes()).sum();
+
+        let category = category.filter(|c| !c.trim().is_empty());
+        let mut parent = self.storage.download_dir.clone();
+        if let Some(raw) = category {
+            let sanitized = crate::sanitize_category(raw).ok_or_else(|| {
+                crate::Error::Other(format!(
+                    "invalid category {raw:?}: must not contain path traversal, absolute paths, or NUL bytes"
+                ))
+            })?;
+            parent.push(sanitized);
+        }
+
+        let id = Uuid::new_v4().to_string();
+        let folder = crate::sanitize_filename(name);
+        let mut download_dir = parent.join(&folder);
+        // A folder left by an earlier download keeps its files apart.
+        if tokio::fs::try_exists(&download_dir).await.unwrap_or(false) {
+            download_dir = parent.join(format!("{folder}.{}", &id[..8]));
+        }
+
+        let url = format!("nzb://{id}");
+        let row = DownloadRow {
             id: id.clone(),
+            url: url.clone(),
+            protocol: Protocol::Usenet.as_str().to_string(),
+            filename: Some(name.to_string()),
+            filesize: Some(total_bytes),
+            status: QueueStatus::Queued.as_str().to_string(),
+            priority: 0,
+            package_id: None,
+            plugin_id: None,
+            download_dir: Some(download_dir.to_string_lossy().into_owned()),
+            bytes_downloaded: 0,
+            speed_current: 0,
+            error_message: None,
+            retry_count: 0,
+            created_at: String::new(),
+            started_at: None,
+            completed_at: None,
+            owner: None,
+        };
+        self.storage.insert_download(&row).await?;
+
+        let metadata = serde_json::json!({
+            "file_count": file_count,
+            "total_bytes": total_bytes,
+            "nzb_data": nzb_data,
+            "category": category.unwrap_or_default(),
+        });
+        if let Err(e) = self
+            .storage
+            .update_download_metadata(&id, &metadata.to_string())
+            .await
+        {
+            // Without its NZB the row could never download.
+            let _ = self.storage.delete_download(&id).await;
+            return Err(e);
+        }
+
+        info!("NZB added: {id} — {name} ({file_count} files, {total_bytes} bytes)");
+        self.announce_and_start(&id, &url, None).await?;
+        Ok(id)
+    }
+
+    /// Announce a stored download and start it if a slot is free.
+    async fn announce_and_start(
+        &self,
+        id: &str,
+        url: &str,
+        owner: Option<String>,
+    ) -> Result<(), crate::Error> {
+        // Cache the owner so event filtering doesn't hit the DB per event.
+        self.owners.lock().await.insert(id.to_string(), owner);
+        let _ = self.event_tx.send(DownloadEvent::Added {
+            id: id.to_string(),
             url: url.to_string(),
         });
 
         info!("Download added: {id} — {url}");
 
         // Auto-start if slots available
-        self.try_start_next().await?;
-
-        Ok(id)
+        self.try_start_next().await
     }
 
     /// Start queued downloads until either the concurrency limit is reached or
