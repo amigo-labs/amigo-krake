@@ -1022,13 +1022,13 @@ async fn main() -> anyhow::Result<()> {
                         file.total_bytes()
                     );
                 }
-                for file in &nzb.files {
-                    let id = coord
-                        .add_download(&format!("nzb://{}", file.filename()), Some(file.filename()))
-                        .await?;
-                    println!("  Queued: {} → {id}", file.filename());
-                }
-                println!("NZB import complete ({} files queued).", nzb.files.len());
+                // One Usenet download for the whole NZB, named after the file.
+                let name = std::path::Path::new(&nzb_path)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("nzb-import");
+                let id = coord.add_nzb_download(name, &data, None).await?;
+                println!("Queued: {name} → {id}");
             } else if let Some(dlc_path) = dlc {
                 let data = std::fs::read(&dlc_path)?;
                 let packages = krake_core::container::import_dlc(&data)?;
