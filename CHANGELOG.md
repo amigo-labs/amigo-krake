@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.1.9](https://github.com/amigo-labs/amigo-krake/compare/v0.1.8...v0.1.9) (2026-11-19)
+
+
+### Features
+
+* **core:** queue NZBs with priority, paused, duplicate and media checks ([e83b168](https://github.com/amigo-labs/amigo-krake/commit/e83b1689659de24ed65d0aa18339831dcec0944f))
+
+
+### Bug Fixes
+
+* **cli:** add an NZB file as one Usenet download ([069a436](https://github.com/amigo-labs/amigo-krake/commit/069a43693ee01cbfc0779d60e66f9327a95858b4))
+* **core:** add an NZB as a usenet download of its own ([17db32a](https://github.com/amigo-labs/amigo-krake/commit/17db32a0ac08504fed4c344c95362947576ee3e5))
+* **core:** end a broken Usenet release as failed, with the reason ([99f3142](https://github.com/amigo-labs/amigo-krake/commit/99f314289354eb62f6ff67ef31ba321e1c311346))
+* **core:** keep a download's category in its metadata, not as a package ([da78c7b](https://github.com/amigo-labs/amigo-krake/commit/da78c7b858629c7a1bb8eaaf74af4fbd37b4cd93))
+* **core:** tell a full or unwritable disk from a broken archive when unpacking ([4e22844](https://github.com/amigo-labs/amigo-krake/commit/4e22844cddc3512e6e8c570ba85c5b6e76c1b696))
+* NZBGet API as a working download client (append, category, history name, own folder) ([2813966](https://github.com/amigo-labs/amigo-krake/commit/2813966c3b21a587cad47b6fba5e35e9a14fd941))
+* **server:** add watch-folder and RSS NZBs as usenet downloads ([fd7559d](https://github.com/amigo-labs/amigo-krake/commit/fd7559da92b53446b88a03eab7843214069ab5e3))
+* **server:** give downloads NZBIDs that never change ([add7a1d](https://github.com/amigo-labs/amigo-krake/commit/add7a1d1d4ed333235173a9c5ede48925ab71b25))
+* **server:** honour all of append's parameters in the NZBGet API ([9d3aa6d](https://github.com/amigo-labs/amigo-krake/commit/9d3aa6d7ee9f0f0e2fa5e05e6b68179863f2bb94))
+* **server:** make the NZBGet API a working download client for *arr tools ([ad2dde4](https://github.com/amigo-labs/amigo-krake/commit/ad2dde4ceeb6d13e0d45942a70d024640233f9eb))
+* **server:** queue uploaded NZBs as usenet downloads ([a559cf4](https://github.com/amigo-labs/amigo-krake/commit/a559cf423d24c264a710a64b82233708b7a653e2))
+* **server:** report why a Usenet download failed in the NZBGet history ([cb9551c](https://github.com/amigo-labs/amigo-krake/commit/cb9551cea6cd647e9c90de6b583c0f781cf411c5))
+
 ## [0.1.8](https://github.com/amigo-labs/amigo-krake/compare/v0.1.7...v0.1.8) (2026-11-18)
 
 
