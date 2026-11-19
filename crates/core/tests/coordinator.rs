@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use krake_core::config::Config;
-use krake_core::coordinator::Coordinator;
+use krake_core::coordinator::{Coordinator, Dupe, DupeMode, NzbAdded, NzbOptions};
 use krake_core::queue::QueueStatus;
 use krake_core::storage::Storage;
 
@@ -424,4 +424,180 @@ async fn a_download_with_a_category_is_stored_with_it() {
     )
     .unwrap();
     assert_eq!(metadata["category"], "movies");
+}
+
+const SMALL_NZB: &str = r#"<?xml version="1.0" encoding="utf-8"?>
+<nzb xmlns="http://www.newzbin.com/DTD/2003/nzb">
+  <file poster="p" date="1" subject="&quot;a.mkv&quot; yEnc (1/1)">
+    <groups><group>alt.binaries.test</group></groups>
+    <segments><segment bytes="100" number="1">a1@test</segment></segments>
+  </file>
+</nzb>"#;
+
+fn dupe(key: &str, score: i64, mode: DupeMode) -> NzbOptions {
+    NzbOptions {
+        dupe: Some(Dupe {
+            key: key.into(),
+            score,
+            mode,
+        }),
+        ..NzbOptions::default()
+    }
+}
+
+async fn add(coord: &Coordinator, name: &str, options: &NzbOptions) -> NzbAdded {
+    coord
+        .add_nzb_download_with(name, SMALL_NZB, options)
+        .await
+        .expect("add NZB")
+}
+
+#[tokio::test]
+async fn an_nzb_is_queued_with_its_priority_and_paused() {
+    let coord = test_coordinator();
+    let added = add(
+        &coord,
+        "Paused.Release",
+        &NzbOptions {
+            priority: 100,
+            paused: true,
+            ..NzbOptions::default()
+        },
+    )
+    .await;
+    assert!(!added.dupe);
+    let row = coord
+        .storage()
+        .get_download(&added.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(row.priority, 100);
+    assert_eq!(row.status, "paused");
+}
+
+#[tokio::test]
+async fn dupe_mode_score_skips_an_nzb_whose_key_is_queued_with_a_higher_or_equal_score() {
+    let coord = test_coordinator();
+    let first = add(&coord, "First", &dupe("show-s01e01", 100, DupeMode::Score)).await;
+    assert!(!first.dupe);
+
+    for score in [100, 50] {
+        let second = add(
+            &coord,
+            "Second",
+            &dupe("show-s01e01", score, DupeMode::Score),
+        )
+        .await;
+        assert!(second.dupe, "score {score} must be a dupe");
+        // Straight to the history, never queued.
+        assert!(
+            coord
+                .storage()
+                .get_download(&second.id)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        let history = coord.storage().get_history().await.unwrap();
+        let entry = history
+            .iter()
+            .find(|h| h.id == second.id)
+            .expect("in history");
+        assert_eq!(entry.status, "failed");
+        let metadata: serde_json::Value = serde_json::from_str(
+            &coord
+                .storage()
+                .get_history_metadata(&second.id)
+                .await
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(metadata["failure"], "dupe");
+        assert_eq!(metadata["dupe_key"], "show-s01e01");
+        assert_eq!(metadata["dupe_score"], score);
+        assert!(metadata.get("nzb_data").is_none());
+    }
+
+    // A higher score, another key, no key, or FORCE is downloaded.
+    for options in [
+        dupe("show-s01e01", 101, DupeMode::Score),
+        dupe("show-s01e02", 0, DupeMode::Score),
+        dupe("", 0, DupeMode::Score),
+        dupe("show-s01e01", 0, DupeMode::Force),
+    ] {
+        let added = add(&coord, "Other", &options).await;
+        assert!(!added.dupe, "{options:?}");
+        assert!(
+            coord
+                .storage()
+                .get_download(&added.id)
+                .await
+                .unwrap()
+                .is_some()
+        );
+    }
+}
+
+#[tokio::test]
+async fn dupe_mode_score_checks_successful_downloads_but_not_failed_ones() {
+    let coord = test_coordinator();
+    let good = add(&coord, "Good", &dupe("movie-1", 10, DupeMode::Score)).await;
+    let bad = add(&coord, "Bad", &dupe("movie-2", 10, DupeMode::Score)).await;
+    for (id, status) in [
+        (&good.id, QueueStatus::Completed),
+        (&bad.id, QueueStatus::Failed),
+    ] {
+        coord
+            .storage()
+            .update_download_status(id, status)
+            .await
+            .unwrap();
+        coord.storage().record_history(id).await.unwrap();
+        coord.storage().delete_download(id).await.unwrap();
+    }
+    // Only the archived history is left of either.
+    assert!(
+        add(&coord, "Again", &dupe("movie-1", 10, DupeMode::Score))
+            .await
+            .dupe
+    );
+    assert!(
+        !add(&coord, "Retry", &dupe("movie-2", 10, DupeMode::Score))
+            .await
+            .dupe
+    );
+}
+
+#[tokio::test]
+async fn dupe_mode_all_skips_only_what_was_downloaded_successfully() {
+    let coord = test_coordinator();
+    let queued = add(&coord, "Queued", &dupe("movie-1", 10, DupeMode::Score)).await;
+    // Queued items do not count for ALL.
+    assert!(
+        !add(&coord, "All", &dupe("movie-1", 0, DupeMode::All))
+            .await
+            .dupe
+    );
+
+    coord
+        .storage()
+        .update_download_status(&queued.id, QueueStatus::Completed)
+        .await
+        .unwrap();
+    // A successful download counts whatever the score.
+    assert!(
+        add(&coord, "All", &dupe("movie-1", 1000, DupeMode::All))
+            .await
+            .dupe
+    );
+}
+
+#[test]
+fn dupe_modes_parse_nzbget_names() {
+    assert_eq!(DupeMode::parse("score"), DupeMode::Score);
+    assert_eq!(DupeMode::parse("ALL"), DupeMode::All);
+    assert_eq!(DupeMode::parse("Force"), DupeMode::Force);
+    assert_eq!(DupeMode::parse(""), DupeMode::Score);
 }

@@ -451,6 +451,36 @@ fn extract_tar(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
     )
 }
 
+/// Whether `dir` (searched recursively) holds a media file: a video or audio
+/// file by extension, see [`MEDIA_EXTENSIONS`].
+pub fn contains_media(dir: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return false;
+    };
+    entries.flatten().any(|entry| {
+        let path = entry.path();
+        match entry.file_type() {
+            Ok(t) if t.is_dir() => contains_media(&path),
+            Ok(t) if t.is_file() => path
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| MEDIA_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str())),
+            _ => false,
+        }
+    })
+}
+
+/// The extensions [`contains_media`] counts as media: video containers
+/// (including disc images and DVD/Blu-ray streams) and audio files.
+/// Subtitles, artwork, NFOs, archives and PAR2 files are not media.
+pub const MEDIA_EXTENSIONS: &[&str] = &[
+    // Video
+    "mkv", "mp4", "m4v", "avi", "mov", "wmv", "asf", "mpg", "mpeg", "m2v", "ts", "m2ts", "mts",
+    "vob", "webm", "flv", "ogv", "divx", "xvid", "3gp", "rmvb", "iso", "img", // Audio
+    "mp3", "flac", "m4a", "m4b", "aac", "ogg", "oga", "opus", "wav", "wma", "ape", "wv", "alac",
+    "aiff", "aif", "dsf", "dff", "mka",
+];
+
 /// How a post-processing stage of a Usenet download ended, in NZBGet's
 /// terms (`ParStatus`, `UnpackStatus`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -895,6 +925,29 @@ mod tests {
         let status = run_extract_phase(dir.path(), &PostProcessConfig::default()).unwrap();
         assert_eq!(status, StageStatus::Failure);
         assert!(rar.exists());
+    }
+
+    #[test]
+    fn media_is_found_by_extension_in_any_subfolder() {
+        let dir = tempfile::tempdir().unwrap();
+        for name in [
+            "readme.txt",
+            "release.nfo",
+            "release.par2",
+            "cover.jpg",
+            "setup.exe",
+        ] {
+            std::fs::write(dir.path().join(name), b"x").unwrap();
+        }
+        assert!(!contains_media(dir.path()));
+        std::fs::create_dir_all(dir.path().join("Release/Sub")).unwrap();
+        std::fs::write(dir.path().join("Release/Sub/movie.MKV"), b"x").unwrap();
+        assert!(contains_media(dir.path()));
+
+        let audio = tempfile::tempdir().unwrap();
+        std::fs::write(audio.path().join("01 - track.flac"), b"x").unwrap();
+        assert!(contains_media(audio.path()));
+        assert!(!contains_media(&audio.path().join("missing")));
     }
 
     #[test]

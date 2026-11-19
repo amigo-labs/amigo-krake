@@ -633,6 +633,35 @@ impl Storage {
         Ok(())
     }
 
+    /// Status and NZBGet duplicate score of every listed download and
+    /// history entry whose metadata has the duplicate key `key`. A history
+    /// entry from before statuses were kept reads `completed`.
+    pub async fn dupes_of(&self, key: &str) -> Result<Vec<(String, i64)>, crate::Error> {
+        let db = self.db.lock().await;
+        let mut stmt = db.prepare(
+            "SELECT status, metadata FROM downloads
+               WHERE CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.dupe_key') END = ?1
+             UNION ALL
+             SELECT COALESCE(status, 'completed'), metadata FROM history
+               WHERE CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.dupe_key') END = ?1",
+        )?;
+        let rows = stmt
+            .query_map(rusqlite::params![key], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows
+            .into_iter()
+            .map(|(status, metadata)| {
+                let score = serde_json::from_str::<serde_json::Value>(&metadata)
+                    .ok()
+                    .and_then(|m| m["dupe_score"].as_i64())
+                    .unwrap_or(0);
+                (status, score)
+            })
+            .collect())
+    }
+
     /// The metadata kept with a history entry: the download's, without its
     /// NZB.
     pub async fn get_history_metadata(&self, id: &str) -> Result<Option<String>, crate::Error> {

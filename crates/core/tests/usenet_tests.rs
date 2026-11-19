@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use krake_core::config::Config;
-use krake_core::coordinator::{Coordinator, DownloadEvent};
+use krake_core::coordinator::{Coordinator, DownloadEvent, NzbOptions};
 use krake_core::storage::{Storage, UsenetServerRow};
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -312,4 +312,52 @@ async fn a_complete_release_succeeds_with_full_health() {
     assert_eq!(meta["health"], 1000);
     assert_eq!(meta["par_status"], "NONE");
     assert_eq!(meta["unpack_status"], "NONE");
+}
+
+/// A release of one file, `name`, added with or without the media check.
+async fn one_file_release(name: &str, media_check: bool) -> (Option<bool>, Value) {
+    let port = fake_nntp(HashMap::from([(
+        "m1@test".to_string(),
+        Article::Body(yenc(name, b"content")),
+    )]))
+    .await;
+    let (_tmp, coord) = usenet_coordinator(port).await;
+    let rx = coord.subscribe();
+    let added = coord
+        .add_nzb_download_with(
+            "Some.Release",
+            &nzb(&[(name, &["m1@test"])]),
+            &NzbOptions {
+                category: Some("movies".into()),
+                media_check,
+                ..NzbOptions::default()
+            },
+        )
+        .await
+        .unwrap();
+    let outcome = wait_for_terminal(rx, &added.id).await;
+    (outcome, metadata(&coord, &added.id).await)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_release_without_media_fails_as_bad_when_media_is_checked() {
+    let (outcome, meta) = one_file_release("setup.exe", true).await;
+    assert_eq!(outcome, Some(false));
+    assert_eq!(meta["failure"], "media");
+    assert_eq!(meta["par_status"], "NONE");
+    assert_eq!(meta["unpack_status"], "NONE");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_release_with_media_passes_the_media_check() {
+    let (outcome, meta) = one_file_release("movie.mkv", true).await;
+    assert_eq!(outcome, Some(true));
+    assert!(meta["failure"].is_null());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn without_the_media_check_a_release_of_documents_succeeds() {
+    let (outcome, meta) = one_file_release("manual.pdf", false).await;
+    assert_eq!(outcome, Some(true));
+    assert!(meta["failure"].is_null());
 }

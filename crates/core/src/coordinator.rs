@@ -438,6 +438,26 @@ impl Coordinator {
         nzb_data: &str,
         category: Option<&str>,
     ) -> Result<String, crate::Error> {
+        let options = NzbOptions {
+            category: category.map(str::to_string),
+            ..NzbOptions::default()
+        };
+        Ok(self
+            .add_nzb_download_with(name, nzb_data, &options)
+            .await?
+            .id)
+    }
+
+    /// Queue an NZB as [`Self::add_nzb_download`] does, with what NZBGet's
+    /// `append` passes beyond the NZB: priority, paused, duplicate check
+    /// and the media check.
+    pub async fn add_nzb_download_with(
+        &self,
+        name: &str,
+        nzb_data: &str,
+        options: &NzbOptions,
+    ) -> Result<NzbAdded, crate::Error> {
+        let category = options.category.as_deref();
         let nzb = crate::protocol::usenet::nzb::parse_nzb(nzb_data)?;
         let file_count = nzb.files.len();
         let total_bytes: u64 = nzb.files.iter().map(|f| f.total_bytes()).sum();
@@ -461,6 +481,19 @@ impl Coordinator {
             download_dir = parent.join(format!("{folder}.{}", &id[..8]));
         }
 
+        let dupe = match &options.dupe {
+            Some(d) => self.is_dupe(d).await?,
+            None => false,
+        };
+        let status = if dupe {
+            // Never queued: it goes straight to the history below.
+            QueueStatus::Failed
+        } else if options.paused {
+            QueueStatus::Paused
+        } else {
+            QueueStatus::Queued
+        };
+
         let url = format!("nzb://{id}");
         let row = DownloadRow {
             id: id.clone(),
@@ -468,8 +501,8 @@ impl Coordinator {
             protocol: Protocol::Usenet.as_str().to_string(),
             filename: Some(name.to_string()),
             filesize: Some(total_bytes),
-            status: QueueStatus::Queued.as_str().to_string(),
-            priority: 0,
+            status: status.as_str().to_string(),
+            priority: options.priority,
             package_id: None,
             plugin_id: None,
             download_dir: Some(download_dir.to_string_lossy().into_owned()),
@@ -484,12 +517,21 @@ impl Coordinator {
         };
         self.storage.insert_download(&row).await?;
 
-        let metadata = serde_json::json!({
+        let mut metadata = serde_json::json!({
             "file_count": file_count,
             "total_bytes": total_bytes,
             "nzb_data": nzb_data,
             "category": category.unwrap_or_default(),
+            "media_check": options.media_check,
         });
+        if let Some(d) = &options.dupe {
+            metadata["dupe_key"] = d.key.clone().into();
+            metadata["dupe_score"] = d.score.into();
+            metadata["dupe_mode"] = d.mode.as_str().into();
+        }
+        if dupe {
+            metadata["failure"] = "dupe".into();
+        }
         if let Err(e) = self
             .storage
             .update_download_metadata(&id, &metadata.to_string())
@@ -500,9 +542,43 @@ impl Coordinator {
             return Err(e);
         }
 
+        if dupe {
+            // NZBGet keeps a skipped duplicate in its history only.
+            self.storage.record_history(&id).await?;
+            self.storage.delete_download(&id).await?;
+            info!("NZB skipped as duplicate: {id} — {name}");
+            return Ok(NzbAdded { id, dupe: true });
+        }
+
         info!("NZB added: {id} — {name} ({file_count} files, {total_bytes} bytes)");
         self.announce_and_start(&id, &url, None).await?;
-        Ok(id)
+        Ok(NzbAdded { id, dupe: false })
+    }
+
+    /// NZBGet's duplicate check: whether an NZB with `dupe` is skipped
+    /// because of a listed or archived item with the same key.
+    async fn is_dupe(&self, dupe: &Dupe) -> Result<bool, crate::Error> {
+        if dupe.key.is_empty() || dupe.mode == DupeMode::Force {
+            return Ok(false);
+        }
+        let others = self.storage.dupes_of(&dupe.key).await?;
+        Ok(others.iter().any(|(status, score)| {
+            let succeeded = status == QueueStatus::Completed.as_str();
+            match dupe.mode {
+                DupeMode::Score => {
+                    let pending = [
+                        QueueStatus::Queued,
+                        QueueStatus::Downloading,
+                        QueueStatus::Paused,
+                    ]
+                    .iter()
+                    .any(|s| s.as_str() == status);
+                    (succeeded || pending) && *score >= dupe.score
+                }
+                DupeMode::All => succeeded,
+                DupeMode::Force => false,
+            }
+        }))
     }
 
     /// Announce a stored download and start it if a slot is free.
@@ -1122,6 +1198,74 @@ async fn run_usenet_download(
     Ok((total_bytes, output_path))
 }
 
+/// How an NZB is queued, beyond the NZB itself: what NZBGet's `append`
+/// passes.
+#[derive(Debug, Clone, Default)]
+pub struct NzbOptions {
+    /// Files go to `<download dir>/<category>/<name>`; kept in the metadata.
+    pub category: Option<String>,
+    /// Queue order: higher starts first, 0 is normal. NZBGet's priorities
+    /// (-100 very low … 100 very high, 900 force) are used as they are.
+    pub priority: i32,
+    /// Add the download paused; it starts once resumed.
+    pub paused: bool,
+    /// NZBGet's duplicate check; `None` checks nothing.
+    pub dupe: Option<Dupe>,
+    /// Fail a release that yields no media file (see
+    /// [`postprocess::contains_media`]) as a bad release.
+    pub media_check: bool,
+}
+
+/// NZBGet's duplicate key, score and mode of an NZB.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Dupe {
+    pub key: String,
+    pub score: i64,
+    pub mode: DupeMode,
+}
+
+/// NZBGet's `DupeMode`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DupeMode {
+    /// Skip the NZB if an item with its key and an equal or higher score is
+    /// queued or was downloaded successfully.
+    Score,
+    /// Skip the NZB only if an item with its key was downloaded
+    /// successfully, whatever its score; the queue is not checked.
+    All,
+    /// Never skip the NZB.
+    Force,
+}
+
+impl DupeMode {
+    /// NZBGet's name for the mode; unknown names read as `SCORE`, NZBGet's
+    /// default.
+    pub fn parse(mode: &str) -> Self {
+        match mode.to_ascii_uppercase().as_str() {
+            "ALL" => DupeMode::All,
+            "FORCE" => DupeMode::Force,
+            _ => DupeMode::Score,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DupeMode::Score => "SCORE",
+            DupeMode::All => "ALL",
+            DupeMode::Force => "FORCE",
+        }
+    }
+}
+
+/// What [`Coordinator::add_nzb_download_with`] did with an NZB.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NzbAdded {
+    pub id: String,
+    /// The NZB was a duplicate: it went straight to the history (NZBGet's
+    /// `DELETED/DUPE`) and is not downloaded.
+    pub dupe: bool,
+}
+
 /// Why a finished Usenet transfer did not yield the release, as stored in
 /// the download's metadata (`failure`) and reported by the NZBGet API.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1132,6 +1276,9 @@ pub enum ReleaseFailure {
     Par,
     /// An archive of the release could not be unpacked.
     Unpack,
+    /// The release unpacked but holds no media file; checked only where
+    /// asked for ([`NzbOptions::media_check`]).
+    NoMedia,
 }
 
 impl ReleaseFailure {
@@ -1140,6 +1287,7 @@ impl ReleaseFailure {
             ReleaseFailure::Health => "health",
             ReleaseFailure::Par => "par",
             ReleaseFailure::Unpack => "unpack",
+            ReleaseFailure::NoMedia => "media",
         }
     }
 }
@@ -1202,6 +1350,16 @@ async fn finish_usenet(
     if outcome.unpack == postprocess::StageStatus::Failure {
         record(Some(ReleaseFailure::Unpack), par, unpack).await;
         return Err("Unpacking failed".into());
+    }
+    if metadata["media_check"].as_bool() == Some(true) {
+        let dir = dir.to_path_buf();
+        let has_media = tokio::task::spawn_blocking(move || postprocess::contains_media(&dir))
+            .await
+            .unwrap_or(true);
+        if !has_media {
+            record(Some(ReleaseFailure::NoMedia), par, unpack).await;
+            return Err("The release holds no media file".into());
+        }
     }
     record(None, par, unpack).await;
     Ok(())
