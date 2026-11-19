@@ -393,3 +393,35 @@ async fn test_config_validation() {
     assert!(!errors.is_empty());
     assert!(errors[0].contains("max_concurrent_downloads"));
 }
+
+#[tokio::test]
+async fn a_download_with_a_category_is_stored_with_it() {
+    // The category is not a package: before, it went into `package_id`,
+    // whose foreign key refused every category no package was named after.
+    let coord = test_coordinator();
+    let id = coord
+        .add_download_with_options(
+            "https://example.com/file.zip",
+            None,
+            Some("movies".into()),
+            0,
+            None,
+        )
+        .await
+        .expect("a category must not need a package");
+
+    let row = coord.storage().get_download(&id).await.unwrap().unwrap();
+    assert_eq!(row.package_id, None);
+    let dir = PathBuf::from(row.download_dir.unwrap());
+    assert_eq!(dir, coord.storage().download_dir.join("movies"));
+    let metadata: serde_json::Value = serde_json::from_str(
+        &coord
+            .storage()
+            .get_download_metadata(&id)
+            .await
+            .unwrap()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(metadata["category"], "movies");
+}

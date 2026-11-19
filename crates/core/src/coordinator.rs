@@ -387,7 +387,9 @@ impl Coordinator {
             filesize: resolved.as_ref().and_then(|r| r.filesize),
             status: QueueStatus::Queued.as_str().to_string(),
             priority,
-            package_id: sanitized_category.clone(),
+            // A category is not a package: `package_id` must name a row of
+            // `packages`. The category lives in the metadata.
+            package_id: None,
             plugin_id: None,
             download_dir: Some(download_dir),
             bytes_downloaded: 0,
@@ -413,6 +415,11 @@ impl Coordinator {
                 return Ok(existing_id);
             }
             Err(e) => return Err(e),
+        }
+        if let Some(category) = sanitized_category {
+            self.storage
+                .merge_download_metadata(&id, &serde_json::json!({ "category": category }))
+                .await?;
         }
         self.announce_and_start(&id, url, owner).await?;
         Ok(id)
