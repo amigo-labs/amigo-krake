@@ -16,7 +16,16 @@ mod guest_tools;
 include!("src/wasm_config.rs");
 
 fn main() {
-    build_guest();
+    // Cranelift needs more stack than a build script's main thread has on
+    // Windows (1 MiB; 8 MiB on Linux and macOS): precompiling the guest there
+    // overflowed it in the release build.
+    std::thread::Builder::new()
+        .name("build-guest".into())
+        .stack_size(64 * 1024 * 1024)
+        .spawn(build_guest)
+        .expect("cannot start the thread that builds the plugin guest")
+        .join()
+        .unwrap_or_else(|panic| std::panic::resume_unwind(panic));
     check_registry_pubkey();
 }
 
