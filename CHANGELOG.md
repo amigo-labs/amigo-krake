@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.14](https://github.com/amigo-labs/amigo-krake/compare/v0.1.13...v0.1.14) (2026-11-22)
+
+
+### Features
+
+* **plugin-runtime:** suggest plugins for a list of links (AC-01 to AC-08) ([a663ab5](https://github.com/amigo-labs/amigo-krake/commit/a663ab5eadd1a88f2e199f0569cc63e36fa47326))
+* **server:** list form of /plugins/suggest (AC-01, AC-07 to AC-09) ([27d657f](https://github.com/amigo-labs/amigo-krake/commit/27d657fd11ac3cfcd70ad8eef945d3fa24124f94))
+* suggest plugins for the links in the add panel ([4258a4d](https://github.com/amigo-labs/amigo-krake/commit/4258a4d9aa0b40e7836b436b3fffdf1c18183ae5))
+* **web-ui:** suggest plugins for the links in the add panel (AC-10 to AC-15) ([afe4620](https://github.com/amigo-labs/amigo-krake/commit/afe4620106d34ef7479d46a0060b90ffbebd83c5))
+
+
+### Bug Fixes
+
+* **server:** refuse null in the suggest body fields (AC-08) ([8bf1284](https://github.com/amigo-labs/amigo-krake/commit/8bf12846f0f8d2295de5038f314410b814e534e8))
+* **web-ui:** drop the cards of old links when a lookup fails (AC-14) ([463effb](https://github.com/amigo-labs/amigo-krake/commit/463effbacb421782562f13f0cde62703ad52ae31))
+
 ## [0.1.13](https://github.com/amigo-labs/amigo-krake/compare/v0.1.12...v0.1.13) (2026-11-22)
 
 
