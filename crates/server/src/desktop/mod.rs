@@ -8,3 +8,4 @@ pub mod links;
 pub mod paths;
 pub mod state;
 pub mod tray;
+pub mod update;

@@ -17,7 +17,7 @@ use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_notification::NotificationExt;
 
-use crate::updater::TauriUpdater;
+use crate::updater::{self, TauriUpdater};
 
 const MAIN_WINDOW: &str = "main";
 
@@ -118,7 +118,11 @@ async fn start_server(
     let (listener, _state) = paths::bind_listener(&paths.state_path).await?;
 
     let token = krake_server::login::new_session_id();
-    let updater = Arc::new(TauriUpdater::new(app.clone(), paths.state_path.clone()));
+    let updater = Arc::new(updater::new_updater(
+        app.clone(),
+        paths.state_path.clone(),
+        config.update.check_interval_hours,
+    ));
     let handle = embedded::serve(ServeOptions {
         config,
         config_path: paths.config_path.clone(),
@@ -143,7 +147,7 @@ async fn start_server(
         coordinator: handle.coordinator.clone(),
         updater: updater.clone(),
     });
-    updater.start_background_checks();
+    updater::start_background_checks(&updater);
     // The server runs for the life of the process; Quit ends both. Dropping
     // the handle does not stop it.
     drop(handle);
@@ -228,9 +232,6 @@ fn show_main(app: &AppHandle) {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
-        if let Some(desktop) = app.try_state::<Desktop>() {
-            desktop.updater.window_shown();
-        }
     }
 }
 

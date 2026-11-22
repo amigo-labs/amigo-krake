@@ -413,3 +413,334 @@ async fn ac9_tray_pauses_and_resumes_every_download() {
         assert_ne!(row.status, "paused", "{id} still paused");
     }
 }
+
+async fn signed_in(updater: FakeUpdater) -> (Running, String, Arc<FakeUpdater>) {
+    let updater = Arc::new(updater);
+    let server = start(Some(updater.clone())).await;
+    let cookie = sign_in(&server).await;
+    (server, cookie, updater)
+}
+
+async fn call(
+    server: &Running,
+    cookie: &str,
+    method: reqwest::Method,
+    path: &str,
+    body: Option<&str>,
+) -> (u16, serde_json::Value) {
+    let mut req = client()
+        .request(method, server.url(path))
+        .header("cookie", cookie);
+    if let Some(body) = body {
+        req = req
+            .header("content-type", "application/json")
+            .body(body.to_string());
+    }
+    let resp = req.send().await.unwrap();
+    let status = resp.status().as_u16();
+    let json = resp.json().await.unwrap_or(serde_json::Value::Null);
+    (status, json)
+}
+
+#[tokio::test]
+async fn ac17_check_reports_the_desktop_update_and_its_state() {
+    let fake = FakeUpdater {
+        can_self_update: true,
+        ..Default::default()
+    };
+    *fake.check_result.lock().unwrap() = Some(Ok(Some(DesktopUpdateInfo {
+        version: "9.9.9".into(),
+        notes: Some("notes".into()),
+    })));
+    let (server, cookie, _) = signed_in(fake).await;
+    let (status, body) = call(
+        &server,
+        &cookie,
+        reqwest::Method::GET,
+        "/api/v1/updates/check",
+        None,
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    let core = &body["core"];
+    assert_eq!(core["latest_version"], "9.9.9");
+    assert_eq!(core["update_available"], true);
+    assert_eq!(core["distribution"], "tauri");
+    assert_eq!(core["can_self_update"], true);
+    assert_eq!(core["pending_restart"], serde_json::Value::Null);
+    assert_eq!(core["update_mode"], "auto");
+    assert_eq!(core["update_mode_chosen"], false);
+
+    let fake = FakeUpdater::default();
+    *fake.check_result.lock().unwrap() = Some(Ok(None));
+    let (server, cookie, _) = signed_in(fake).await;
+    let (_, body) = call(
+        &server,
+        &cookie,
+        reqwest::Method::GET,
+        "/api/v1/updates/check",
+        None,
+    )
+    .await;
+    assert_eq!(body["core"]["update_available"], false);
+    assert_eq!(body["core"]["can_self_update"], false);
+
+    let fake = FakeUpdater::default();
+    *fake.check_result.lock().unwrap() = Some(Err("offline".into()));
+    let (server, cookie, _) = signed_in(fake).await;
+    let (status, _) = call(
+        &server,
+        &cookie,
+        reqwest::Method::GET,
+        "/api/v1/updates/check",
+        None,
+    )
+    .await;
+    assert_eq!(status, 502);
+}
+
+#[tokio::test]
+async fn ac17_apply_installs_through_the_hook() {
+    let (server, cookie, updater) = signed_in(FakeUpdater {
+        can_self_update: true,
+        ..Default::default()
+    })
+    .await;
+    let (status, body) = call(
+        &server,
+        &cookie,
+        reqwest::Method::POST,
+        "/api/v1/updates/core",
+        None,
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        body,
+        serde_json::json!({ "status": "ready", "version": "9.9.9" })
+    );
+    assert!(updater.calls.lock().unwrap().contains(&"apply".to_string()));
+
+    // Not allowed (deb/rpm, debug): 400, nothing applied.
+    let (server, cookie, updater) = signed_in(FakeUpdater::default()).await;
+    let (status, _) = call(
+        &server,
+        &cookie,
+        reqwest::Method::POST,
+        "/api/v1/updates/core",
+        None,
+    )
+    .await;
+    assert_eq!(status, 400);
+    assert!(!updater.calls.lock().unwrap().contains(&"apply".to_string()));
+
+    // Download or signature failure: 502 with the reason.
+    let fake = FakeUpdater {
+        can_self_update: true,
+        ..Default::default()
+    };
+    *fake.apply_result.lock().unwrap() = Some(Err("signature mismatch".into()));
+    let (server, cookie, _) = signed_in(fake).await;
+    let (status, body) = call(
+        &server,
+        &cookie,
+        reqwest::Method::POST,
+        "/api/v1/updates/core",
+        None,
+    )
+    .await;
+    assert_eq!(status, 502);
+    assert_eq!(body["error"], "signature mismatch");
+}
+
+#[tokio::test]
+async fn ac31_put_mode_makes_the_choice_or_records_a_close() {
+    for (mode, expected) in [("auto", "auto"), ("notify", "notify"), ("off", "off")] {
+        let (server, cookie, updater) = signed_in(FakeUpdater::default()).await;
+        let body = format!(r#"{{"mode":"{mode}"}}"#);
+        let (status, state) = call(
+            &server,
+            &cookie,
+            reqwest::Method::PUT,
+            "/api/v1/updates/mode",
+            Some(&body),
+        )
+        .await;
+        assert_eq!(status, 200, "{state}");
+        assert_eq!(state["update_mode"], expected);
+        assert_eq!(state["saved"], true);
+        assert!(
+            updater
+                .calls
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|c| c.starts_with("set_mode"))
+        );
+    }
+
+    let (server, cookie, updater) = signed_in(FakeUpdater::default()).await;
+    let (status, state) = call(
+        &server,
+        &cookie,
+        reqwest::Method::PUT,
+        "/api/v1/updates/mode",
+        Some(r#"{"dismissed":true}"#),
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(state["question_pending"], false);
+    assert!(
+        updater
+            .calls
+            .lock()
+            .unwrap()
+            .contains(&"dismiss".to_string())
+    );
+
+    for bad in [
+        r#"{"mode":"sometimes"}"#,
+        r#"{"dismissed":false}"#,
+        r#"{}"#,
+        "nope",
+        r#"{"mode":"auto","dismissed":true}"#,
+    ] {
+        let (status, _) = call(
+            &server,
+            &cookie,
+            reqwest::Method::PUT,
+            "/api/v1/updates/mode",
+            Some(bad),
+        )
+        .await;
+        assert_eq!(status, 400, "{bad}");
+    }
+
+    // A failed write: effective anyway, `saved: false`.
+    let (server, cookie, _) = signed_in(FakeUpdater {
+        save_fails: true,
+        ..Default::default()
+    })
+    .await;
+    let (status, state) = call(
+        &server,
+        &cookie,
+        reqwest::Method::PUT,
+        "/api/v1/updates/mode",
+        Some(r#"{"mode":"off"}"#),
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(state["update_mode"], "off");
+    assert_eq!(state["saved"], false);
+}
+
+#[tokio::test]
+async fn ac34_get_mode_answers_without_the_network() {
+    let (server, cookie, _) = signed_in(FakeUpdater {
+        panic_on_network: true,
+        can_self_update: true,
+        ..Default::default()
+    })
+    .await;
+    let (status, state) = call(
+        &server,
+        &cookie,
+        reqwest::Method::GET,
+        "/api/v1/updates/mode",
+        None,
+    )
+    .await;
+    assert_eq!(status, 200);
+    for key in [
+        "update_mode",
+        "update_mode_chosen",
+        "question_pending",
+        "can_self_update",
+        "pending_restart",
+        "announcement",
+    ] {
+        assert!(state.get(key).is_some(), "{key} missing in {state}");
+    }
+    assert_eq!(state["question_pending"], true);
+}
+
+#[tokio::test]
+async fn ac35_announced_marks_only_the_pending_version() {
+    let fake = FakeUpdater::default();
+    *fake.state.lock().unwrap() = Some(DesktopModeState {
+        update_mode: UpdateMode::Notify,
+        update_mode_chosen: true,
+        question_pending: false,
+        can_self_update: true,
+        pending_restart: None,
+        announcement: Some("2.0.0".into()),
+        saved: true,
+    });
+    let (server, cookie, _) = signed_in(fake).await;
+    let (status, _) = call(
+        &server,
+        &cookie,
+        reqwest::Method::POST,
+        "/api/v1/updates/announced",
+        Some(r#"{"version":"1.0.0"}"#),
+    )
+    .await;
+    assert_eq!(status, 400);
+    let (status, _) = call(
+        &server,
+        &cookie,
+        reqwest::Method::POST,
+        "/api/v1/updates/announced",
+        Some(r#"{"v":"2.0.0"}"#),
+    )
+    .await;
+    assert_eq!(status, 400);
+    let (status, state) = call(
+        &server,
+        &cookie,
+        reqwest::Method::POST,
+        "/api/v1/updates/announced",
+        Some(r#"{"version":"2.0.0"}"#),
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(state["announcement"], serde_json::Value::Null);
+}
+
+#[tokio::test]
+async fn ac31_ac34_ac35_routes_are_absent_outside_desktop_mode() {
+    let server = start(None).await;
+    // A plain server with no admin yet lets loopback through setup; sign in
+    // is not possible, so use the setup flow to get a session.
+    let resp = client()
+        .post(server.url("/api/v1/setup/complete"))
+        .json(&serde_json::json!({ "username": "admin", "password": "correct horse" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let cookie = resp.headers()["set-cookie"]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_string();
+    for (method, path, body) in [
+        (reqwest::Method::GET, "/api/v1/updates/mode", None),
+        (
+            reqwest::Method::PUT,
+            "/api/v1/updates/mode",
+            Some(r#"{"mode":"auto"}"#),
+        ),
+        (
+            reqwest::Method::POST,
+            "/api/v1/updates/announced",
+            Some(r#"{"version":"1.0.0"}"#),
+        ),
+    ] {
+        let (status, _) = call(&server, &cookie, method, path, body).await;
+        assert_eq!(status, 404, "{path}");
+    }
+}
