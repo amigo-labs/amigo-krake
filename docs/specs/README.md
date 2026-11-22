@@ -7,7 +7,6 @@ notes for Krake. The workflow is in `AGENTS.md`, "Spec-driven workflow".
 
 | # | Spec | Status | Depends on |
 | - | ---- | ------ | ---------- |
-| 1 | [plugin-wasm-sandbox](plugin-wasm-sandbox.md) | todo | plugin-wasm-guest (done) |
 | 2 | [desktop-app](desktop-app.md) | todo | — (three PRs: P1 embedded server, P2 tray, P3 updater, release and update choice) |
 
 ## Done
@@ -23,6 +22,7 @@ front matter; they are converted when next revised.
 - [plugin-packages](plugin-packages.md)
 - [plugin-registry](plugin-registry.md)
 - [plugin-wasm-guest](plugin-wasm-guest.md)
+- [plugin-wasm-sandbox](plugin-wasm-sandbox.md)
 - [rust-1-99-toolchain](rust-1-99-toolchain.md)
 - [self-update](self-update.md)
 - [tauri-workspace-integration](tauri-workspace-integration.md)

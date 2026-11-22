@@ -1,5 +1,5 @@
 ---
-status: todo
+status: implemented
 created: 2026-11-10
 size: L
 design: [AGENTS.md "Plugin-System", AGENTS.md "Wichtige Design-Entscheidungen" 14, docs/specs/plugin-sandbox-hardening.md SH-7a and SH-7b, docs/specs/plugin-wasm-guest.md]
@@ -62,52 +62,52 @@ Depends on: `plugin-wasm-guest` (`status: implemented`).
 
 ## Acceptance criteria
 
-- [ ] AC-01 (always): Krake runs every plugin entry point (module load,
+- [x] AC-01 (always): Krake runs every plugin entry point (module load,
   manifest read, `resolve`, `postProcess`, plugin specs) inside a Wasm instance; the plugin host process contains no native
   QuickJS. A test asserts that `krake-plugin-runtime` has no `rquickjs`
   dependency for the host target (`cargo tree -p krake-plugin-runtime
   --target <host>`).
-- [ ] AC-02 (always): Every existing test of `krake-plugin-runtime`
+- [x] AC-02 (always): Every existing test of `krake-plugin-runtime`
   (`runtime_tests`, `sandbox_tests`, `hardening_tests`, `host_api_tests`,
   `process_host_tests`, `spec_runner`, `updater_tests`) and every shipped
   plugin spec (`plugins/**/plugin.spec.ts`) passes without a change to its
   assertions, and the tests of `plugin-wasm-guest` pass against recorded
   expected values instead of the removed native engine.
-- [ ] AC-03 (error): If plugin code makes the guest trap or time out during a
+- [x] AC-03 (error): If plugin code makes the guest trap or time out during a
   call, then only that call fails (execution error or timeout error), the plugin is marked `failing` until its
   next successful call, the child process keeps running, and other plugins'
   in-flight calls complete. If it happens while the plugin is being loaded,
   loading fails and the plugin is not registered.
-- [ ] AC-04 (error): If a plugin exceeds its memory limit
+- [x] AC-04 (error): If a plugin exceeds its memory limit
   (`SandboxLimits::max_memory_bytes`), then the call fails with an execution
   error and the next call of the same plugin works in a fresh instance.
-- [ ] AC-05 (always): The limits of `SandboxLimits` keep their meaning: 30 s
+- [x] AC-05 (always): The limits of `SandboxLimits` keep their meaning: 30 s
   per call, 5 s per module load, 64 MB per plugin, 20 HTTP requests per call,
   1 MB storage. The 64 MB bound the instance's linear memory (QuickJS heap
   plus engine). The existing tests for each stay green (AC-02), and the
   memory limit has a test of its own (AC-04).
-- [ ] AC-06 (event): When a plugin is loaded a second time with an unchanged
+- [x] AC-06 (event): When a plugin is loaded a second time with an unchanged
   source, then it loads from the bytecode cache (observable as in the existing test
   `second_load_comes_from_bytecode_cache_and_corruption_falls_back`); when the
   cached entry was written by a different guest build (another hash of the
   embedded module), then it is never read: the plugin loads from source and
   this build writes its own entry; when an entry of this build is corrupt,
   then it is dropped, the plugin loads from source and the entry is replaced.
-- [ ] AC-07 (always): `discover()` of the shipped plugins takes under 60 ms
+- [x] AC-07 (always): `discover()` of the shipped plugins takes under 60 ms
   cold and under 40 ms warm (without and with the bytecode cache, as
   `perf_baseline` defines them), and a `generic-http` `resolve()` with 3 host HTTP
   calls under 5 ms, in a release build on the 4 vCPU container
   (`cargo test -p krake-plugin-runtime --release --test perf_baseline --
   --ignored --nocapture`, median of 5). The measured values are recorded under
   Decisions next to the SH-7a numbers.
-- [ ] AC-08 (always): The CLI archive, the server archive and the Docker image
+- [x] AC-08 (always): The CLI archive, the server archive and the Docker image
   contain `krake`/`krake-server` and `krake-plugin-host` and nothing else new;
   the plugin host needs no file besides its own executable at run time: a
   test copies it alone into an empty directory and runs a plugin through it.
-- [ ] AC-09 (always, CI: release builds): The release workflow builds the
+- [x] AC-09 (always, CI: release builds): The release workflow builds the
   plugin host with the embedded guest for all five targets (Linux x86_64 and
   aarch64, macOS x86_64 and aarch64, Windows x86_64).
-- [ ] AC-10 (always, manual: documentation review): The documentation states
+- [x] AC-10 (always, manual: documentation review): The documentation states
   the boundary as it is:
   `docs/specs/plugin-sandbox-hardening.md` marks SH-7b as replaced by this
   spec, `docs/plugin-api.md` and AGENTS.md "Sandboxing" say that plugin JS
@@ -141,6 +141,16 @@ Depends on: `plugin-wasm-guest` (`status: implemented`).
 | The budgets of AC-07 leave room over the SH-7a numbers (17 ms cold, 12 ms warm, 1.8 ms resolve) | The prototype measured 1.5 ms to load the precompiled module and roughly 2 to 3 times slower JS | Medium: `resolve` is dominated by IPC (about 0.2 ms per host call), not JS, so 5 ms is roughly 3 times today's value; cold and warm are about 3 times today's. If a budget is missed, the spec is revised with the measurement, not the test weakened |
 | Unbounded recursion ending the call instead of throwing a catchable error is acceptable | No shipped plugin relies on catching it, and the registry holds only reviewed plugins; the Wasm stack limit is the only reliable guard | Low |
 
+## Summary
+
+> Completed: 2026-11-22
+
+- `krake-plugin-host` runs every plugin entry point (load, manifest, `resolve`, `postProcess`, specs) in its own Wasm instance (QuickJS in `wasmtime`); native QuickJS is gone from `krake-plugin-runtime`.
+- A trap, timeout or memory overrun fails only that call, marks the plugin `failing` and rebuilds its instance on the next call; the child keeps running.
+- The bytecode cache is keyed by the embedded guest's hash; IPC protocol version 2.
+- Release archives and the Docker image still ship one extra binary, `krake-plugin-host`, with the guest embedded, for all five targets.
+- Documentation states the Wasm boundary; SH-7b is marked replaced.
+
 ## Open questions
 
 <!-- One bullet per open question; empty means: everything settled, spec-build may start -->
@@ -149,16 +159,16 @@ Depends on: `plugin-wasm-guest` (`status: implemented`).
 
 | AC    | Test | Status | Commit |
 | ----- | ---- | ------ | ------ |
-| AC-01 | `the_plugin_runtime_does_not_depend_on_native_quickjs` (crates/plugin-runtime/tests/wasm_sandbox_tests.rs); the plugin host only links `wasm.rs` for execution | built |        |
-| AC-02 | existing suites unchanged and green: `runtime_tests`, `sandbox_tests`, `hardening_tests`, `host_api_tests`, `process_host_tests`, `spec_runner`, `updater_tests`; `wasm_guest_tests` against `tests/fixtures/native_engine_expectations.json` | built |        |
-| AC-03 | `a_trap_or_timeout_fails_one_call_and_the_plugin_recovers`, `other_plugins_calls_complete_while_one_traps`, `a_trap_or_timeout_while_loading_leaves_the_plugin_unregistered`, `an_ordinary_plugin_error_does_not_mark_the_plugin_failing` (crates/plugin-runtime/tests/wasm_sandbox_tests.rs) | built |        |
-| AC-04 | `exceeding_the_memory_limit_fails_the_call_and_the_next_one_works` (crates/plugin-runtime/tests/wasm_sandbox_tests.rs) | built |        |
-| AC-05 | AC-02 suites (timeouts, HTTP budget, storage quota in `hardening_tests`, `host_api_tests`, `sandbox_tests`) plus AC-04 | built |        |
-| AC-06 | `second_load_comes_from_bytecode_cache_and_corruption_falls_back` (crates/plugin-runtime/tests/hardening_tests.rs), `bytecode_of_another_guest_build_is_never_read` (crates/plugin-runtime/tests/wasm_sandbox_tests.rs), `engine_version_is_part_of_the_key` (crates/plugin-runtime/src/bytecode_cache.rs) | built |        |
-| AC-07 | `plugin_load_and_resolve_baseline` (crates/plugin-runtime/tests/perf_baseline.rs, ignored, run by hand, asserts the budgets in release): cold 21 ms, warm 16 ms, resolve 1.9 ms (medians, three runs, release, 4 vCPU container, 2026-11-11) | built |        |
-| AC-08 | `the_plugin_host_needs_only_its_own_executable` (crates/plugin-runtime/tests/wasm_sandbox_tests.rs); archives and image: `.github/workflows/release-build.yml` and `docker/Dockerfile` ship the same three binaries as before | built |        |
-| AC-09 | CI: release builds — run 44509230843 of `release-build.yml` (via release-please, commit 2138301, 2026-11-19): the five CLI/server jobs (Linux x86_64 and aarch64, macOS x86_64 and aarch64, Windows x86_64) built and packaged `krake-plugin-host` with the embedded guest, green; the later upload job failed on an artifact download (GitHub transfer error, not a build) | built |        |
-| AC-10 | manual: daniel-rck checked the sandbox documentation (`docs/plugin-api.md` (Sandbox Limits, bytecode), `docs/architecture.md` (Plugin isolation), AGENTS.md (Sandboxing, Tech Stack), README, `docs/site/project.yml`, `plugin-sandbox-hardening.md`, `plugin-runtime-wasm-portability.md`), 2026-11-11 | built |        |
+| AC-01 | `the_plugin_runtime_does_not_depend_on_native_quickjs` (crates/plugin-runtime/tests/wasm_sandbox_tests.rs) | verified | eea66fe |
+| AC-02 | unchanged suites green: `runtime_tests` (12), `sandbox_tests` (7), `hardening_tests` (11), `host_api_tests` (8), `process_host_tests` (7), `spec_runner` (6, incl. every shipped `plugin.spec.ts`), `updater_tests` (4); `wasm_guest_tests` (21) against `tests/fixtures/native_engine_expectations.json` (crates/plugin-runtime/tests/) | verified | eea66fe |
+| AC-03 | `a_trap_or_timeout_fails_one_call_and_the_plugin_recovers`, `other_plugins_calls_complete_while_one_traps`, `a_trap_or_timeout_while_loading_leaves_the_plugin_unregistered`, `an_ordinary_plugin_error_does_not_mark_the_plugin_failing` (crates/plugin-runtime/tests/wasm_sandbox_tests.rs) | verified | eea66fe |
+| AC-04 | `exceeding_the_memory_limit_fails_the_call_and_the_next_one_works` (crates/plugin-runtime/tests/wasm_sandbox_tests.rs) | verified | eea66fe |
+| AC-05 | AC-02 suites (timeouts, HTTP budget, storage quota in `hardening_tests`, `host_api_tests`, `sandbox_tests`) plus `exceeding_the_memory_limit_fails_the_call_and_the_next_one_works`; default 64 MB is the Wasm linear-memory bound (`plugin_host.rs` → `wasm.rs` `max_memory`) | verified | eea66fe |
+| AC-06 | `second_load_comes_from_bytecode_cache_and_corruption_falls_back` (crates/plugin-runtime/tests/hardening_tests.rs), `bytecode_of_another_guest_build_is_never_read` (crates/plugin-runtime/tests/wasm_sandbox_tests.rs), `bytecode_cache::tests::engine_version_is_part_of_the_key` (crates/plugin-runtime/src/bytecode_cache.rs) | verified | eea66fe |
+| AC-07 | `plugin_load_and_resolve_baseline` (crates/plugin-runtime/tests/perf_baseline.rs, `--release --ignored`, asserts the budgets) — passed 2026-11-22 on the 4 vCPU container, 9 shipped plugins: cold 29.5 ms, warm 20.6 ms, `generic-http` resolve 1.74 ms (medians) | verified | f201bf8 |
+| AC-08 | `the_plugin_host_needs_only_its_own_executable` (crates/plugin-runtime/tests/wasm_sandbox_tests.rs); archives and image: `.github/workflows/release-build.yml` packages `krake`/`krake-server` + `krake-plugin-host`, `docker/Dockerfile` copies the same three binaries | verified | eea66fe |
+| AC-09 | CI: release builds — run 44509230843 (release via release-please, 2138301, 2026-11-19): the five CLI jobs (Linux x86_64 and aarch64, macOS x86_64 and aarch64, Windows x86_64) built `-p krake-plugin-runtime` and packaged `krake-plugin-host` with the embedded guest, green; only the later upload job failed on an artifact download | verified | 92843df |
+| AC-10 | manual: daniel-rck checked the sandbox documentation (`docs/plugin-api.md` (Sandbox Limits, bytecode), `docs/architecture.md` (Plugin isolation), AGENTS.md (Sandboxing, Tech Stack), README, `docs/site/project.yml`, `plugin-sandbox-hardening.md`, `plugin-runtime-wasm-portability.md`), 2026-11-11 | verified | 373c6b6 |
 
 ## Decisions
 
