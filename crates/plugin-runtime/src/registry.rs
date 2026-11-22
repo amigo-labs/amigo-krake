@@ -590,6 +590,107 @@ pub fn suggest_plugin_for_url<'a>(
     None
 }
 
+/// What a suggestion asks the user to do (`docs/specs/plugin-suggest-on-add.md`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SuggestAction {
+    /// Install the plugin from the registry.
+    Install,
+    /// Enable the installed, disabled plugin.
+    Enable,
+}
+
+/// A plugin that would handle some of the given links better than the
+/// installed ones, with the links it covers.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct LinkSuggestion {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    /// The plugin's `permissions.domains`: `None` when unscoped.
+    pub domains: Option<Vec<String>>,
+    /// The covered links, each once, in input order.
+    pub urls: Vec<String>,
+    pub action: SuggestAction,
+}
+
+/// Suggest plugins for `urls` (plugin-suggest-on-add AC-01 to AC-08).
+///
+/// A web link that an enabled installed `hoster` or `multi-hoster` plugin
+/// already matches gets nothing. Otherwise the first disabled installed
+/// `hoster` that matches is offered for enabling, else the first compatible
+/// registry plugin tagged `hoster` that is not installed. Multi-hosters and
+/// generic plugins are never suggested. `index` is `None` when the registry
+/// is unavailable; enable suggestions need none.
+pub fn suggest_for_links(
+    index: Option<&RegistryIndex>,
+    installed: &[PluginMeta],
+    urls: &[String],
+) -> Vec<LinkSuggestion> {
+    use crate::types::PluginType;
+
+    let matches =
+        |pattern: &str, url: &str| url_pattern_regex(pattern).is_some_and(|re| re.is_match(url));
+    let mut out: Vec<LinkSuggestion> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    for url in urls {
+        let is_web = url::Url::parse(url).is_ok_and(|u| matches!(u.scheme(), "http" | "https"));
+        if !is_web || !seen.insert(url.as_str()) {
+            continue;
+        }
+        let handled = installed.iter().any(|p| {
+            p.enabled
+                && matches!(p.plugin_type, PluginType::Hoster | PluginType::MultiHoster)
+                && matches(&p.url_pattern, url)
+        });
+        if handled {
+            continue;
+        }
+        let candidate = installed
+            .iter()
+            .find(|p| {
+                !p.enabled && p.plugin_type == PluginType::Hoster && matches(&p.url_pattern, url)
+            })
+            .map(|p| LinkSuggestion {
+                id: p.id.clone(),
+                name: p.name.clone(),
+                version: p.version.clone(),
+                domains: p.permissions.domains.clone(),
+                urls: Vec::new(),
+                action: SuggestAction::Enable,
+            })
+            .or_else(|| {
+                index?
+                    .plugins
+                    .iter()
+                    .find(|r| {
+                        r.tags.iter().any(|t| t == "hoster")
+                            && r.is_compatible()
+                            && !installed.iter().any(|p| p.id == r.id)
+                            && matches(&r.url_pattern, url)
+                    })
+                    .map(|r| LinkSuggestion {
+                        id: r.id.clone(),
+                        name: r.name.clone(),
+                        version: r.version.clone(),
+                        domains: r.permissions.as_ref().and_then(|p| p.domains.clone()),
+                        urls: Vec::new(),
+                        action: SuggestAction::Install,
+                    })
+            });
+        let Some(candidate) = candidate else { continue };
+        match out.iter_mut().find(|s| s.id == candidate.id) {
+            Some(existing) => existing.urls.push(url.clone()),
+            None => out.push(LinkSuggestion {
+                urls: vec![url.clone()],
+                ..candidate
+            }),
+        }
+    }
+    out
+}
+
 /// File extension for a plugin source artifact, from its download URL's path.
 /// Anything other than `.ts` / `.js` (bytecode, archives, binaries) is
 /// rejected.
@@ -1203,5 +1304,234 @@ mod tests {
             updates[0].added_domains.as_deref(),
             Some(&["b.com".to_string()][..])
         );
+    }
+
+    // --- plugin-suggest-on-add ---
+
+    fn reg(id: &str, pattern: &str, tag: &str) -> RegistryPlugin {
+        RegistryPlugin {
+            id: id.into(),
+            name: id.to_uppercase(),
+            version: "1.0.0".into(),
+            description: String::new(),
+            author: String::new(),
+            url_pattern: pattern.into(),
+            min_app_version: None,
+            sha256: "00".into(),
+            download_url: format!("https://x.test/{id}.ts"),
+            tags: vec![tag.into()],
+            api_version: None,
+            permissions: Some(crate::types::PluginPermissions {
+                domains: Some(vec![format!("{id}.test")]),
+            }),
+        }
+    }
+
+    fn installed(
+        id: &str,
+        pattern: &str,
+        kind: crate::types::PluginType,
+        enabled: bool,
+    ) -> PluginMeta {
+        PluginMeta {
+            id: id.into(),
+            name: id.to_uppercase(),
+            version: "0.9.0".into(),
+            url_pattern: pattern.into(),
+            file_path: format!("/tmp/{id}.ts"),
+            enabled,
+            description: None,
+            author: None,
+            plugin_type: kind,
+            api_version: 1,
+            permissions: Default::default(),
+            failing: false,
+        }
+    }
+
+    fn index(plugins: Vec<RegistryPlugin>) -> RegistryIndex {
+        RegistryIndex {
+            schema_version: 1,
+            plugins,
+        }
+    }
+
+    fn links(urls: &[&str]) -> Vec<String> {
+        urls.iter().map(|u| u.to_string()).collect()
+    }
+
+    #[test]
+    fn ac01_suggestions_group_links_per_plugin_in_input_order() {
+        let idx = index(vec![
+            reg("aaa", r"https?://aaa\.test/.+", "hoster"),
+            reg("bbb", r"https?://bbb\.test/.+", "hoster"),
+        ]);
+        let urls = links(&[
+            "https://bbb.test/1",
+            "https://aaa.test/1",
+            "https://bbb.test/2",
+            "https://bbb.test/1",
+            "https://nothing.test/1",
+        ]);
+        let got = suggest_for_links(Some(&idx), &[], &urls);
+        assert_eq!(got.len(), 2, "{got:?}");
+        assert_eq!(got[0].id, "bbb");
+        assert_eq!(got[0].name, "BBB");
+        assert_eq!(got[0].version, "1.0.0");
+        assert_eq!(got[0].action, SuggestAction::Install);
+        assert_eq!(got[0].domains, Some(vec!["bbb.test".to_string()]));
+        // Duplicates once, input order kept.
+        assert_eq!(
+            got[0].urls,
+            links(&["https://bbb.test/1", "https://bbb.test/2"])
+        );
+        assert_eq!(got[1].id, "aaa");
+        assert_eq!(got[1].urls, links(&["https://aaa.test/1"]));
+    }
+
+    #[test]
+    fn ac01_domains_keep_unscoped_and_empty_apart() {
+        let mut unscoped = reg("u", r"https?://u\.test/.+", "hoster");
+        unscoped.permissions = None;
+        let mut none = reg("n", r"https?://n\.test/.+", "hoster");
+        none.permissions = Some(crate::types::PluginPermissions {
+            domains: Some(vec![]),
+        });
+        let idx = index(vec![unscoped, none]);
+        let got = suggest_for_links(
+            Some(&idx),
+            &[],
+            &links(&["https://u.test/1", "https://n.test/1"]),
+        );
+        assert_eq!(got[0].domains, None);
+        assert_eq!(got[1].domains, Some(vec![]));
+    }
+
+    #[test]
+    fn ac02_only_hoster_plugins_are_suggested() {
+        let idx = index(vec![
+            reg("multi", r"https?://shared\.test/.+", "multi-hoster"),
+            reg("generic", r"https?://.+", "generic"),
+        ]);
+        let got = suggest_for_links(
+            Some(&idx),
+            &[],
+            &links(&["https://shared.test/1", "https://x.test/1"]),
+        );
+        assert!(got.is_empty(), "{got:?}");
+        // An installed disabled multi-hoster or generic plugin is no candidate either.
+        let inst = [
+            installed(
+                "m",
+                r"https?://shared\.test/.+",
+                crate::types::PluginType::MultiHoster,
+                false,
+            ),
+            installed(
+                "g",
+                r"https?://.+",
+                crate::types::PluginType::Generic,
+                false,
+            ),
+        ];
+        assert!(suggest_for_links(None, &inst, &links(&["https://shared.test/1"])).is_empty());
+    }
+
+    #[test]
+    fn ac03_links_an_enabled_hoster_or_multi_hoster_handles_get_nothing() {
+        use crate::types::PluginType;
+        let idx = index(vec![reg("aaa", r"https?://aaa\.test/.+", "hoster")]);
+        let urls = links(&["https://aaa.test/1"]);
+        for kind in [PluginType::Hoster, PluginType::MultiHoster] {
+            let inst = [installed(
+                "mine",
+                r"https?://aaa\.test/.+",
+                kind.clone(),
+                true,
+            )];
+            assert!(
+                suggest_for_links(Some(&idx), &inst, &urls).is_empty(),
+                "{kind:?}"
+            );
+        }
+        // Only a generic plugin covers it: the suggestion stays.
+        let inst = [installed(
+            "generic-http",
+            r"https?://.+",
+            PluginType::Generic,
+            true,
+        )];
+        assert_eq!(suggest_for_links(Some(&idx), &inst, &urls).len(), 1);
+    }
+
+    #[test]
+    fn ac04_ac06_a_disabled_installed_hoster_is_offered_for_enabling() {
+        use crate::types::PluginType;
+        let idx = index(vec![reg("aaa", r"https?://aaa\.test/.+", "hoster")]);
+        let mut inst = installed("old", r"https?://aaa\.test/.+", PluginType::Hoster, false);
+        inst.permissions = crate::types::PluginPermissions {
+            domains: Some(vec!["old.test".into()]),
+        };
+        let second = installed("older", r"https?://aaa\.test/.+", PluginType::Hoster, false);
+        let got = suggest_for_links(Some(&idx), &[inst, second], &links(&["https://aaa.test/1"]));
+        assert_eq!(got.len(), 1, "{got:?}");
+        assert_eq!(got[0].id, "old");
+        assert_eq!(got[0].action, SuggestAction::Enable);
+        assert_eq!(got[0].version, "0.9.0");
+        assert_eq!(got[0].domains, Some(vec!["old.test".to_string()]));
+    }
+
+    #[test]
+    fn ac05_incompatible_registry_plugins_are_left_out() {
+        let mut future = reg("future", r"https?://aaa\.test/.+", "hoster");
+        future.api_version = Some(crate::HOST_API_VERSION + 1);
+        let fallback = reg("fallback", r"https?://aaa\.test/.+", "hoster");
+        let got = suggest_for_links(
+            Some(&index(vec![future, fallback])),
+            &[],
+            &links(&["https://aaa.test/1"]),
+        );
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].id, "fallback");
+    }
+
+    #[test]
+    fn ac06_the_first_registry_plugin_wins_a_link() {
+        let idx = index(vec![
+            reg("first", r"https?://aaa\.test/.+", "hoster"),
+            reg("second", r"https?://aaa\.test/.+", "hoster"),
+        ]);
+        let got = suggest_for_links(Some(&idx), &[], &links(&["https://aaa.test/1"]));
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].id, "first");
+    }
+
+    #[test]
+    fn ac07_without_a_registry_only_enable_suggestions_remain() {
+        use crate::types::PluginType;
+        let inst = [installed(
+            "old",
+            r"https?://aaa\.test/.+",
+            PluginType::Hoster,
+            false,
+        )];
+        let got = suggest_for_links(
+            None,
+            &inst,
+            &links(&["https://aaa.test/1", "https://bbb.test/1"]),
+        );
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].action, SuggestAction::Enable);
+    }
+
+    #[test]
+    fn ac08_non_web_links_are_ignored() {
+        let idx = index(vec![reg("any", r".+", "hoster")]);
+        let got = suggest_for_links(
+            Some(&idx),
+            &[],
+            &links(&["ftp://a.test/x", "magnet:?xt=1", "not a url"]),
+        );
+        assert!(got.is_empty(), "{got:?}");
     }
 }
