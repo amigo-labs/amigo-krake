@@ -818,3 +818,23 @@ fn ac8_clicknload_starts_once_through_serve() {
     }
     assert_eq!(asks, 1, "the desktop app asks serve for Click'n'Load once");
 }
+
+/// The desktop cookie is `Secure` exactly when `/login`'s would be: only
+/// for HTTPS behind a trusted proxy, never on the app's plain loopback HTTP.
+#[tokio::test]
+async fn ac3_the_cookie_is_secure_only_like_login() {
+    let server = start(Some(Arc::new(FakeUpdater::default()))).await;
+    let resp = client()
+        .get(server.url(&format!("/api/v1/desktop/session?token={TOKEN}")))
+        // Without trust_proxy a forwarded scheme is ignored.
+        .header("x-forwarded-proto", "https")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 303);
+    let set_cookie = resp.headers()["set-cookie"]
+        .to_str()
+        .unwrap()
+        .to_ascii_lowercase();
+    assert!(!set_cookie.contains("secure"), "{set_cookie}");
+}

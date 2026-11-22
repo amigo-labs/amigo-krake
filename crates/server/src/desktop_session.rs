@@ -86,8 +86,12 @@ async fn exchange(
                 return StatusCode::INTERNAL_SERVER_ERROR.into_response();
             }
         };
+    // Like `/login`: `Secure` only when the request came over HTTPS through a
+    // trusted proxy. The desktop app itself speaks plain HTTP on 127.0.0.1,
+    // where a `Secure` cookie could be dropped and the window never signs in.
     let cookie = Cookie::build((SESSION_COOKIE, session_id))
         .http_only(true)
+        .secure(auth::request_is_secure(&headers, cfg.server.trust_proxy))
         .same_site(SameSite::Strict)
         .path("/")
         .max_age(cookie::time::Duration::seconds(cfg.server.session_ttl_secs))
