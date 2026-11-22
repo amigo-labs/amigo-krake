@@ -14,6 +14,7 @@
   },
   "bundle": {
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -30,6 +31,11 @@
         "depends": [
           "ca-certificates"
         ]
+      }
+    },
+    "windows": {
+      "nsis": {
+        "installerHooks": "windows/hooks.nsh"
       }
     },
     "externalBin": [
@@ -55,11 +61,13 @@
       ]
     },
     "updater": {
-      "active": false,
       "endpoints": [
         "https://github.com/amigo-labs/amigo-krake/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMwOTg1MDRDMTUzOEI4RjYKUldUMnVEZ1ZURkNZTUd1ZSsyS2grT05uc1U1aWdPazgvaVlsTlgrdm8zRHE1SEFIN0FTNjhMZksK"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMwOTg1MDRDMTUzOEI4RjYKUldUMnVEZ1ZURkNZTUd1ZSsyS2grT05uc1U1aWdPazgvaVlsTlgrdm8zRHE1SEFIN0FTNjhMZksK",
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }
