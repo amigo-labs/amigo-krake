@@ -203,7 +203,7 @@ Card sketch (above the Add button, inside the URL tab):
 | AC-11 | "AC-11 refresh asks again for the current links at once" (web-ui/test/pluginSuggest.test.ts); "AC-11 Install approves the domains, toasts and asks again", "AC-11 Enable enables the installed plugin", "AC-11 a failed refresh after an install still removes the installed card" (web-ui/test/pluginSuggestions.dom.test.ts) | built |  |
 | AC-12 | "AC-12 a failed install keeps the card and its button, with an error toast" (web-ui/test/pluginSuggestions.dom.test.ts) | built |  |
 | AC-13 | "AC-13 a failed lookup reports nothing and throws nothing" (web-ui/test/pluginSuggest.test.ts); "add panel (AC-13) queues the links while a lookup is still running" (web-ui/test/pluginSuggestions.dom.test.ts) | built |  |
-| AC-14 | "AC-14 drops an answer to an earlier lookup that arrives later", "AC-14 a field without links shows no cards at once and drops the pending answer" (web-ui/test/pluginSuggest.test.ts) | built |  |
+| AC-14 | "AC-14 drops an answer to an earlier lookup that arrives later", "AC-14 a field without links shows no cards at once and drops the pending answer", "AC-14 a failed lookup for changed links clears the cards of the old links" (web-ui/test/pluginSuggest.test.ts) | built |  |
 | AC-15 | "every literal tr() key exists in the en and de tables" (web-ui/test/i18nKeys.test.ts) over the `add.suggest_*` keys of `PluginSuggestions.svelte` | built |  |
 
 ## Decisions
@@ -230,9 +230,14 @@ Card sketch (above the Add button, inside the URL tab):
 - 2026-11-22 (build): `suggest_ac09_the_single_url_form_is_unchanged` was
   green at once: it guards existing behaviour (plugin-registry AC-17) against
   the new list form, so there is no red run for AC-09.
-- 2026-11-22 (build): A body with `null`, a string or numbers in `urls` is
-  rejected by the JSON extractor (`422`); both or neither field and more than
-  1 000 links answer `400` with an `error` message.
+- 2026-11-22 (build): A string or numbers in `urls` are rejected by the
+  JSON extractor (`422`). A field given as `null` counts as given, so `null`
+  in either field, both or neither field and more than 1 000 links answer
+  `400` with an `error` message (spec-check round 1: `{"url": .., "urls":
+  null}` was read as the single form).
+- 2026-11-22 (build): A failed lookup after the field changed clears the
+  cards (they belong to links that are gone); a failed refresh after an
+  install keeps them (spec-check round 1, AC-14).
 - 2026-11-22 (build): The lookup (quiet time, latest answer only, refresh)
   is a plain module, `web-ui/src/lib/pluginSuggest.ts`, tested with fake
   timers; the cards are `PluginSuggestions.svelte` inside the URL tab above

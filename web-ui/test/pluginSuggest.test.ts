@@ -91,7 +91,24 @@ describe("suggestion lookup", () => {
     await vi.advanceTimersByTimeAsync(SUGGEST_DELAY_MS);
     calls[0].reject(new Error("HTTP 400"));
     await vi.advanceTimersByTimeAsync(0);
-    expect(onResult).not.toHaveBeenCalled();
+    // At most "no cards"; the error itself goes nowhere.
+    for (const [result] of onResult.mock.calls) expect(result).toEqual([]);
+  });
+
+  it("AC-14 a failed lookup for changed links clears the cards of the old links", async () => {
+    const { fetch, calls } = manualFetch();
+    const onResult = vi.fn();
+    const lookup = createSuggestionLookup({ fetch, onResult });
+
+    lookup.update(["https://a.test/1"]);
+    await vi.advanceTimersByTimeAsync(SUGGEST_DELAY_MS);
+    calls[0].resolve([suggestion("a", ["https://a.test/1"])]);
+    await vi.advanceTimersByTimeAsync(0);
+    lookup.update(["https://b.test/1"]);
+    await vi.advanceTimersByTimeAsync(SUGGEST_DELAY_MS);
+    calls[1].reject(new Error("offline"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onResult).toHaveBeenLastCalledWith([]);
   });
 
   it("AC-11 refresh asks again for the current links at once", async () => {

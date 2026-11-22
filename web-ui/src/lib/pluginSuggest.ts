@@ -45,7 +45,8 @@ export function createSuggestionLookup(opts: {
     timer = null;
   }
 
-  function run() {
+  /** `refresh`: a failure keeps the cards; a changed field: it clears them. */
+  function run(refresh = false) {
     cancel();
     const mine = ++generation;
     if (links.length === 0) {
@@ -58,6 +59,8 @@ export function createSuggestionLookup(opts: {
       },
       () => {
         // No error for a failed lookup: adding links never depends on it.
+        // Cards of links that left the field go, though (AC-14).
+        if (mine === generation && !refresh) opts.onResult([]);
       },
     );
   }
@@ -71,9 +74,9 @@ export function createSuggestionLookup(opts: {
         return;
       }
       generation++;
-      timer = setTimeout(run, delay);
+      timer = setTimeout(() => run(), delay);
     },
-    refresh: run,
+    refresh: () => run(true),
     dispose() {
       cancel();
       generation++;
