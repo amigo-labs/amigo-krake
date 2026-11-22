@@ -8,6 +8,13 @@
   import { addToast } from "../lib/toast";
   import { bannerView, readyVersion } from "../lib/desktopUpdates";
   import { locale, tr } from "../lib/i18n";
+
+  /** The hint a banner shows instead of the Update button. */
+  const HINT = {
+    "package-manager": "updates.package_manager",
+    docker: "updates.docker",
+    unavailable: "updates.unavailable",
+  } as const;
   import SkeletonCard from "../components/SkeletonCard.svelte";
   import Card from "@amigo-labs/krake-ui/components/Card.svelte";
   import Button from "@amigo-labs/krake-ui/components/Button.svelte";
@@ -160,11 +167,11 @@
     <Banner tone="success" role="status" title={tr($locale, "updates.ready")}>
       <span class="perm-mono">v{banner.version}</span>
     </Banner>
-  {:else if banner.kind === "package-manager"}
+  {:else if banner.kind === "package-manager" || banner.kind === "docker" || banner.kind === "unavailable"}
     <Banner tone="info" title={tr($locale, "plugins.core_update")}>
       <span class="perm-mono">v{banner.from} &rarr; v{banner.to}</span>
       {#snippet actions()}
-        <span class="core-hint">{tr($locale, "updates.package_manager")}</span>
+        <span class="core-hint">{tr($locale, HINT[banner.kind])}</span>
       {/snippet}
     </Banner>
   {:else if banner.kind === "offer"}

@@ -70,6 +70,10 @@ export type BannerView =
   | { kind: "offer"; from: string; to: string }
   /** An update this copy cannot install itself: a hint instead of the button. */
   | { kind: "package-manager"; from: string; to: string }
+  /** Docker replaces itself by pulling a new image, never through the button. */
+  | { kind: "docker"; from: string; to: string }
+  /** A plain server whose platform has no download in the release (yet). */
+  | { kind: "unavailable"; from: string; to: string }
   /** Downloaded; takes effect at the next start. */
   | { kind: "ready"; version: string };
 
@@ -85,14 +89,14 @@ export function bannerView(check: UpdateCheck | null, ready: string | null): Ban
   const from = core.current_version;
   const to = core.latest_version ?? "";
   if (packageManaged(core)) return { kind: "package-manager", from, to };
+  if (core.can_self_update === false) {
+    const docker = core.distribution?.toLowerCase() === "docker";
+    return { kind: docker ? "docker" : "unavailable", from, to };
+  }
   return { kind: "offer", from, to };
 }
 
-/**
- * A desktop copy that may not replace itself (`.deb` / `.rpm`, debug build,
- * AC-16). Only the desktop app says so: a plain server reports
- * `can_self_update: false` for Docker too, where the banner keeps its button.
- */
+/** A desktop copy that may not replace itself (`.deb` / `.rpm`, debug build, AC-16). */
 export function packageManaged(core: UpdateCheck["core"] | undefined): boolean {
   return core?.distribution?.toLowerCase() === "tauri" && core.can_self_update === false;
 }

@@ -441,6 +441,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     // Desktop app updates (spec desktop-app, AC-18, AC-25 to AC-33)
     "updates.ready": "Update ready — takes effect at the next start",
     "updates.package_manager": "Update with your package manager",
+    "updates.docker": "Pull the new image: docker compose pull",
+    "updates.unavailable": "No download for this platform in this release yet",
     "updates.question_title": "How should Krake handle updates?",
     "updates.question_desc": "You can change this any time in Settings ▸ About.",
     "updates.mode_label": "Updates",
@@ -889,6 +891,8 @@ export const translations: Record<Locale, Record<string, string>> = {
 
     "updates.ready": "Update bereit — wird beim nächsten Start wirksam",
     "updates.package_manager": "Mit dem Paketmanager aktualisieren",
+    "updates.docker": "Neues Image holen: docker compose pull",
+    "updates.unavailable": "Für diese Plattform gibt es in diesem Release noch keinen Download",
     "updates.question_title": "Wie soll Krake mit Updates umgehen?",
     "updates.question_desc": "Du kannst das jederzeit unter Einstellungen ▸ Über ändern.",
     "updates.mode_label": "Updates",
