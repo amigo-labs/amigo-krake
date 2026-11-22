@@ -498,10 +498,12 @@ async fn get_update_mode(State(state): State<AppState>) -> DesktopResult {
 
 /// `PUT /updates/mode`: `{"mode": …}` makes a choice, `{"dismissed": true}`
 /// records a close of the first-start question without one.
-async fn put_update_mode(State(state): State<AppState>, body: axum::body::Bytes) -> DesktopResult {
+async fn put_update_mode(
+    State(state): State<AppState>,
+    body: Result<Json<serde_json::Value>, axum::extract::rejection::JsonRejection>,
+) -> DesktopResult {
     let desktop = state.desktop_updater.ok_or_else(not_desktop)?;
-    let value: serde_json::Value =
-        serde_json::from_slice(&body).map_err(|_| bad_body("expected a JSON object"))?;
+    let Json(value) = body.map_err(|_| bad_body("expected a JSON object"))?;
     let object = value
         .as_object()
         .filter(|o| o.len() == 1)
@@ -525,10 +527,12 @@ struct AnnouncedRequest {
 }
 
 /// `POST /updates/announced`: mark the pending announcement as shown.
-async fn post_announced(State(state): State<AppState>, body: axum::body::Bytes) -> DesktopResult {
+async fn post_announced(
+    State(state): State<AppState>,
+    body: Result<Json<AnnouncedRequest>, axum::extract::rejection::JsonRejection>,
+) -> DesktopResult {
     let desktop = state.desktop_updater.ok_or_else(not_desktop)?;
-    let request: AnnouncedRequest =
-        serde_json::from_slice(&body).map_err(|_| bad_body(r#"expected {"version": "x.y.z"}"#))?;
+    let Json(request) = body.map_err(|_| bad_body(r#"expected {"version": "x.y.z"}"#))?;
     desktop
         .acknowledge(&request.version)
         .map_err(|e| bad_body(&e))?;
