@@ -12,10 +12,72 @@ use krake_core::updater::{self, CoreUpdateStatus};
 
 use crate::api::AppState;
 
+/// The desktop app's update choice (`docs/specs/desktop-app.md`, AC-25).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum UpdateMode {
+    /// Install verified updates by themselves (the default).
+    Auto,
+    /// Announce each new version once; install on request.
+    Notify,
+    /// No background checks.
+    Off,
+}
+
+/// Update-choice state, answered without network access (AC-34).
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct DesktopModeState {
+    pub update_mode: UpdateMode,
+    pub update_mode_chosen: bool,
+    pub question_pending: bool,
+    pub can_self_update: bool,
+    pub pending_restart: Option<String>,
+    pub announcement: Option<String>,
+    /// `false` after a failed write of `desktop.json` (only in PUT answers).
+    pub saved: bool,
+}
+
+/// A newer desktop version found by a check.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DesktopUpdateInfo {
+    pub version: String,
+    pub notes: Option<String>,
+}
+
+/// The desktop app's updater. Implemented by the Tauri app on top of
+/// tauri-plugin-updater; the server only calls it (AC-17, AC-31, AC-34,
+/// AC-35).
+#[async_trait::async_trait]
+pub trait DesktopUpdater: Send + Sync {
+    /// Whether this copy may update itself (AC-16).
+    fn can_self_update(&self) -> bool;
+    /// Version downloaded and verified in this session, if any.
+    fn pending_restart(&self) -> Option<String>;
+    /// Check only; `None` when up to date.
+    async fn check(&self) -> Result<Option<DesktopUpdateInfo>, String>;
+    /// Check, download, verify and install / hold (AC-14, AC-15); returns
+    /// the version.
+    async fn apply(&self) -> Result<String, String>;
+    /// Update-choice state without network access (AC-34).
+    fn mode_state(&self) -> DesktopModeState;
+    /// Make a choice effective for this run and store it (AC-31).
+    fn set_mode(&self, mode: UpdateMode) -> DesktopModeState;
+    /// Record a close of the first-start question without a choice (AC-26).
+    fn dismiss_question(&self);
+    /// Mark `version` as announced; `Err` if it is not the pending one
+    /// (AC-35).
+    fn acknowledge(&self, version: &str) -> Result<(), String>;
+}
+
 pub fn update_router(state: AppState) -> Router {
     Router::new()
         .route("/api/v1/updates/check", get(check_updates))
         .route("/api/v1/updates/core", post(apply_core_update))
+        .route(
+            "/api/v1/updates/mode",
+            get(get_update_mode).put(put_update_mode),
+        )
+        .route("/api/v1/updates/announced", post(post_announced))
         .route(
             "/api/v1/updates/plugins/available",
             get(list_available_plugins),
@@ -45,6 +107,15 @@ struct CoreUpdateInfo {
     release_notes: Option<String>,
     distribution: String,
     can_self_update: bool,
+    /// Desktop mode: the version downloaded and verified in this run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pending_restart: Option<Option<String>>,
+    /// Desktop mode: the effective update choice (AC-17).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    update_mode: Option<UpdateMode>,
+    /// Desktop mode: whether a choice is stored (AC-17).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    update_mode_chosen: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -95,9 +166,37 @@ struct ErrorResponse {
 
 // --- Handlers ---
 
+/// The core part of `GET /updates/check` in desktop mode (AC-17).
+async fn desktop_core_info(
+    updater: &dyn DesktopUpdater,
+) -> Result<CoreUpdateInfo, (StatusCode, Json<ErrorResponse>)> {
+    let found = updater
+        .check()
+        .await
+        .map_err(|error| (StatusCode::BAD_GATEWAY, Json(ErrorResponse { error })))?;
+    let mode = updater.mode_state();
+    Ok(CoreUpdateInfo {
+        current_version: updater::CURRENT_VERSION.to_string(),
+        update_available: found.is_some(),
+        latest_version: found.as_ref().map(|f| f.version.clone()),
+        release_notes: found.and_then(|f| f.notes),
+        distribution: "tauri".into(),
+        can_self_update: updater.can_self_update(),
+        pending_restart: Some(updater.pending_restart()),
+        update_mode: Some(mode.update_mode),
+        update_mode_chosen: Some(mode.update_mode_chosen),
+    })
+}
+
 async fn check_updates(
     State(state): State<AppState>,
 ) -> Result<Json<CheckUpdatesResponse>, (StatusCode, Json<ErrorResponse>)> {
+    if let Some(desktop) = state.desktop_updater.clone() {
+        let core = desktop_core_info(desktop.as_ref()).await?;
+        let plugins = plugin_update_entries(&state).await;
+        return Ok(Json(CheckUpdatesResponse { core, plugins }));
+    }
+
     // Check core update
     let core_status = updater::check_for_update(
         &state.http_client,
@@ -120,6 +219,9 @@ async fn check_updates(
             release_notes: Some(release_notes),
             distribution: format!("{:?}", updater::detect_distribution()),
             can_self_update,
+            pending_restart: None,
+            update_mode: None,
+            update_mode_chosen: None,
         },
         _ => CoreUpdateInfo {
             current_version: updater::CURRENT_VERSION.to_string(),
@@ -128,17 +230,24 @@ async fn check_updates(
             release_notes: None,
             distribution: format!("{:?}", updater::detect_distribution()),
             can_self_update: false,
+            pending_restart: None,
+            update_mode: None,
+            update_mode_chosen: None,
         },
     };
 
-    // Check plugin updates
+    let plugins = plugin_update_entries(&state).await;
+    Ok(Json(CheckUpdatesResponse { core, plugins }))
+}
+
+async fn plugin_update_entries(state: &AppState) -> Vec<PluginUpdateEntry> {
     let plugin_updates = state
         .plugin_updater
         .check_updates()
         .await
         .unwrap_or_default();
 
-    let plugins: Vec<PluginUpdateEntry> = plugin_updates
+    plugin_updates
         .into_iter()
         .map(|u| PluginUpdateEntry {
             plugin_id: u.plugin_id,
@@ -149,14 +258,32 @@ async fn check_updates(
             added_domains: u.added_domains,
             requires_approval: u.requires_approval,
         })
-        .collect();
-
-    Ok(Json(CheckUpdatesResponse { core, plugins }))
+        .collect()
 }
 
 async fn apply_core_update(
     State(state): State<AppState>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorResponse>)> {
+    // Desktop mode: check, download, verify and install (or hold for Quit
+    // on Windows) through the desktop updater, whatever the choice (AC-17).
+    if let Some(desktop) = state.desktop_updater.clone() {
+        if !desktop.can_self_update() {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "This copy cannot update itself; update it with your package manager"
+                        .into(),
+                }),
+            ));
+        }
+        return match desktop.apply().await {
+            Ok(version) => Ok((
+                StatusCode::OK,
+                Json(serde_json::json!({ "status": "ready", "version": version })),
+            )),
+            Err(error) => Err((StatusCode::BAD_GATEWAY, Json(ErrorResponse { error }))),
+        };
+    }
     let status = updater::check_for_update(
         &state.http_client,
         &state.coordinator.config().await.update.github_repo,
@@ -339,4 +466,75 @@ async fn install_plugin(
             Json(serde_json::json!({"error": e.to_string()})),
         ),
     }
+}
+
+// --- Desktop update choice (AC-31, AC-34, AC-35) ---
+
+type DesktopResult = Result<Json<DesktopModeState>, (StatusCode, Json<ErrorResponse>)>;
+
+fn not_desktop() -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::NOT_FOUND,
+        Json(ErrorResponse {
+            error: "only in the desktop app".into(),
+        }),
+    )
+}
+
+fn bad_body(error: &str) -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::BAD_REQUEST,
+        Json(ErrorResponse {
+            error: error.into(),
+        }),
+    )
+}
+
+/// `GET /updates/mode`: the update-choice state, without network access.
+async fn get_update_mode(State(state): State<AppState>) -> DesktopResult {
+    let desktop = state.desktop_updater.ok_or_else(not_desktop)?;
+    Ok(Json(desktop.mode_state()))
+}
+
+/// `PUT /updates/mode`: `{"mode": …}` makes a choice, `{"dismissed": true}`
+/// records a close of the first-start question without one.
+async fn put_update_mode(
+    State(state): State<AppState>,
+    body: Result<Json<serde_json::Value>, axum::extract::rejection::JsonRejection>,
+) -> DesktopResult {
+    let desktop = state.desktop_updater.ok_or_else(not_desktop)?;
+    let Json(value) = body.map_err(|_| bad_body("expected a JSON object"))?;
+    let object = value
+        .as_object()
+        .filter(|o| o.len() == 1)
+        .ok_or_else(|| bad_body(r#"expected {"mode": …} or {"dismissed": true}"#))?;
+    if let Some(mode) = object.get("mode") {
+        let mode: UpdateMode = serde_json::from_value(mode.clone())
+            .map_err(|_| bad_body(r#"mode must be "auto", "notify" or "off""#))?;
+        return Ok(Json(desktop.set_mode(mode)));
+    }
+    if object.get("dismissed") == Some(&serde_json::Value::Bool(true)) {
+        desktop.dismiss_question();
+        return Ok(Json(desktop.mode_state()));
+    }
+    Err(bad_body(r#"expected {"mode": …} or {"dismissed": true}"#))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AnnouncedRequest {
+    version: String,
+}
+
+/// `POST /updates/announced`: mark the pending announcement as shown.
+async fn post_announced(
+    State(state): State<AppState>,
+    body: Result<Json<AnnouncedRequest>, axum::extract::rejection::JsonRejection>,
+) -> DesktopResult {
+    let desktop = state.desktop_updater.ok_or_else(not_desktop)?;
+    let Json(request) = body.map_err(|_| bad_body(r#"expected {"version": "x.y.z"}"#))?;
+    desktop
+        .acknowledge(&request.version)
+        .map_err(|e| bad_body(&e))?;
+    Ok(Json(desktop.mode_state()))
 }

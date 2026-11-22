@@ -209,6 +209,9 @@ jobs:
 
       - name: Build and push
         uses: docker/build-push-action@v6
+        env:
+          # No build-record artifact; the upload job has no use for it.
+          DOCKER_BUILD_RECORD_UPLOAD: false
         with:
           context: .
           file: docker/Dockerfile
@@ -233,16 +236,41 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # `asset` is the stable name prefix of the desktop release assets
+          # (docs/specs/desktop-app.md, AC-22), so that
+          # releases/latest/download/<name> always resolves.
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
+            asset: krake-linux-x64
           - target: x86_64-apple-darwin
             os: macos-latest
+            asset: krake-macos-x64
           - target: aarch64-apple-darwin
             os: macos-latest
+            asset: krake-macos-arm64
           - target: x86_64-pc-windows-msvc
             os: windows-latest
+            asset: krake-windows-x64
 
     steps:
+      # The updater artifacts (createUpdaterArtifacts in tauri.conf.json) are
+      # signed with the organization's minisign key (ID 3098504C1538B8F6);
+      # without it the build fails late or, worse, ships unsigned (AC-24).
+      - name: Require the updater signing key
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          missing=0
+          for var in TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD; do
+            if [ -z "${!var}" ]; then
+              echo "::error::Organization secret $var is not available to this repository; desktop releases sign their updater artifacts with it (docs/specs/desktop-app.md, AC-24)."
+              missing=1
+            fi
+          done
+          exit "$missing"
+
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag_name }}
@@ -318,36 +346,77 @@ jobs:
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version "^2" --locked
 
+      # The app runs plugins in krake-plugin-host, bundled as a Tauri sidecar
+      # (bundle.externalBin). Tauri looks for it under its target-triple name
+      # (docs/specs/desktop-app.md, AC-7).
+      - name: Build the plugin host sidecar
+        shell: bash
+        run: |
+          cargo build --release --locked --target ${{ matrix.target }} -p krake-plugin-runtime --bin krake-plugin-host
+          ext=""
+          if [ "$RUNNER_OS" = "Windows" ]; then ext=".exe"; fi
+          mkdir -p tauri/binaries
+          cp "target/${{ matrix.target }}/release/krake-plugin-host$ext" \
+            "tauri/binaries/krake-plugin-host-${{ matrix.target }}$ext"
+          ls -l tauri/binaries
+
+      # tauri-cli signs every updater artifact with the minisign key.
       - name: Build Tauri installer
-        uses: tauri-apps/tauri-action@v0
+        working-directory: tauri
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          projectPath: tauri
-          tauriScript: cargo tauri
-          args: --target ${{ matrix.target }} --features tauri
+        run: cargo tauri build --target ${{ matrix.target }} --features tauri
+
+      # Bundle names carry the version (Krake_0.2.0_x64-setup.exe); the
+      # release assets get stable names, each updater artifact with its .sig
+      # (AC-19, AC-22). Exactly one file must match each bundle pattern.
+      - name: Stable asset names
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          bundle="target/${{ matrix.target }}/release/bundle"
+          out="desktop-assets"
+          mkdir -p "$out"
+          take() { # <pattern> <stable name> <updater artifact: yes|no>
+            local matches=($1)
+            if [ "${#matches[@]}" -ne 1 ]; then
+              echo "::error::expected exactly one $1, found ${#matches[@]}: ${matches[*]:-none}"
+              exit 1
+            fi
+            cp "${matches[0]}" "$out/$2"
+            if [ "$3" = yes ]; then
+              if [ ! -s "${matches[0]}.sig" ]; then
+                echo "::error::${matches[0]} has no updater signature (.sig)"
+                exit 1
+              fi
+              cp "${matches[0]}.sig" "$out/$2.sig"
+            fi
+          }
+          a="${{ matrix.asset }}"
+          case "$RUNNER_OS" in
+            Windows)
+              take "$bundle/nsis/*-setup.exe" "$a-setup.exe" yes
+              take "$bundle/msi/*.msi" "$a.msi" yes
+              ;;
+            macOS)
+              take "$bundle/dmg/*.dmg" "$a.dmg" no
+              take "$bundle/macos/*.app.tar.gz" "$a.app.tar.gz" yes
+              ;;
+            Linux)
+              take "$bundle/appimage/*.AppImage" "$a.AppImage" yes
+              take "$bundle/deb/*.deb" "$a.deb" no
+              ;;
+          esac
+          ls -l "$out"
 
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
           name: installer-${{ matrix.target }}
-          path: |
-            target/${{ matrix.target }}/release/bundle/deb/*.deb
-            target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
-            target/${{ matrix.target }}/release/bundle/appimage/*.AppImage.tar.gz
-            target/${{ matrix.target }}/release/bundle/appimage/*.AppImage.tar.gz.sig
-            target/${{ matrix.target }}/release/bundle/dmg/*.dmg
-            target/${{ matrix.target }}/release/bundle/macos/*.app
-            target/${{ matrix.target }}/release/bundle/macos/*.app.tar.gz
-            target/${{ matrix.target }}/release/bundle/macos/*.app.tar.gz.sig
-            target/${{ matrix.target }}/release/bundle/msi/*.msi
-            target/${{ matrix.target }}/release/bundle/msi/*.msi.zip
-            target/${{ matrix.target }}/release/bundle/msi/*.msi.zip.sig
-            target/${{ matrix.target }}/release/bundle/nsis/*.exe
-            target/${{ matrix.target }}/release/bundle/nsis/*.nsis.zip
-            target/${{ matrix.target }}/release/bundle/nsis/*.nsis.zip.sig
+          path: desktop-assets/*
+          if-no-files-found: error
 
   # ─── Upload to GitHub Release + Tauri Updater JSON ─────────────────
   upload:
@@ -355,11 +424,23 @@ jobs:
     needs: [cli, docker, installers]
     runs-on: ubuntu-latest
     steps:
+      # The tag's tauri.conf.json holds the pubkey the installers were built
+      # with, which the key-ID guard checks against.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag_name }}
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Only this workflow's own artifacts: docker/build-push-action also
+      # attaches a build record (`*.dockerbuild`), whose download fails and
+      # failed the 0.1.10 upload twice.
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+          pattern: "{binaries,installer}-*"
           merge-multiple: true
 
       - name: List artifacts
@@ -374,100 +455,23 @@ jobs:
           KRAKE_UPDATE_SIGNING_KEY: ${{ secrets.AMIGO_UPDATE_SIGNING_KEY }}
         run: scripts/sign-update-archives.sh artifacts
 
+      # Every desktop updater signature must carry the key ID of
+      # plugins.updater.pubkey, or every installed copy would reject the
+      # update (AC-21). A key rotation's bridge release sets the repository
+      # variable UPDATER_SIGNING_KEY_ID to the new key's ID.
+      - name: Check the updater signature key ID
+        env:
+          UPDATER_SIGNING_KEY_ID: ${{ vars.UPDATER_SIGNING_KEY_ID }}
+        run: node scripts/updater-key-id-guard.mjs artifacts --conf tauri/tauri.conf.json
+
+      # Tauri 2 updater manifest; fails when any platform's signature is
+      # missing (AC-20).
       - name: Generate Tauri updater JSON
-        run: |
-          VERSION="${{ inputs.version }}"
-          TAG="${{ inputs.tag_name }}"
-          REPO="amigo-labs/amigo-krake"
-          BASE_URL="https://github.com/${REPO}/releases/download/${TAG}"
-          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-          # Read signatures if they exist, otherwise empty string
-          read_sig() {
-            local file="$1"
-            if [ -f "$file" ]; then
-              cat "$file"
-            else
-              echo ""
-            fi
-          }
-
-          # Find Tauri artifacts and their signatures
-          LINUX_URL=""
-          LINUX_SIG=""
-          MACOS_X86_URL=""
-          MACOS_X86_SIG=""
-          MACOS_ARM_URL=""
-          MACOS_ARM_SIG=""
-          WINDOWS_URL=""
-          WINDOWS_SIG=""
-
-          # Linux AppImage
-          for f in artifacts/*.AppImage.tar.gz; do
-            [ -f "$f" ] || continue
-            BASENAME=$(basename "$f")
-            LINUX_URL="${BASE_URL}/${BASENAME}"
-            LINUX_SIG=$(read_sig "${f}.sig")
-          done
-
-          # macOS x86_64 .app
-          for f in artifacts/*x86_64*.app.tar.gz; do
-            [ -f "$f" ] || continue
-            BASENAME=$(basename "$f")
-            MACOS_X86_URL="${BASE_URL}/${BASENAME}"
-            MACOS_X86_SIG=$(read_sig "${f}.sig")
-          done
-
-          # macOS aarch64 .app
-          for f in artifacts/*aarch64*.app.tar.gz artifacts/*universal*.app.tar.gz; do
-            [ -f "$f" ] || continue
-            BASENAME=$(basename "$f")
-            MACOS_ARM_URL="${BASE_URL}/${BASENAME}"
-            MACOS_ARM_SIG=$(read_sig "${f}.sig")
-          done
-
-          # If no separate arm build, use x86 for both (universal)
-          if [ -z "$MACOS_ARM_URL" ] && [ -n "$MACOS_X86_URL" ]; then
-            MACOS_ARM_URL="$MACOS_X86_URL"
-            MACOS_ARM_SIG="$MACOS_X86_SIG"
-          fi
-
-          # Windows NSIS
-          for f in artifacts/*.nsis.zip; do
-            [ -f "$f" ] || continue
-            BASENAME=$(basename "$f")
-            WINDOWS_URL="${BASE_URL}/${BASENAME}"
-            WINDOWS_SIG=$(read_sig "${f}.sig")
-          done
-
-          cat > artifacts/latest.json << EOF
-          {
-            "version": "${VERSION}",
-            "notes": "Release ${VERSION} — see https://github.com/${REPO}/releases/tag/${TAG} for full changelog",
-            "pub_date": "${DATE}",
-            "platforms": {
-              "linux-x86_64": {
-                "url": "${LINUX_URL}",
-                "signature": "${LINUX_SIG}"
-              },
-              "darwin-x86_64": {
-                "url": "${MACOS_X86_URL}",
-                "signature": "${MACOS_X86_SIG}"
-              },
-              "darwin-aarch64": {
-                "url": "${MACOS_ARM_URL}",
-                "signature": "${MACOS_ARM_SIG}"
-              },
-              "windows-x86_64": {
-                "url": "${WINDOWS_URL}",
-                "signature": "${WINDOWS_SIG}"
-              }
-            }
-          }
-          EOF
-
-          # Pretty-print for verification
-          cat artifacts/latest.json
+        run: >-
+          node scripts/updater-latest-json.mjs artifacts
+          --version "${{ inputs.version }}"
+          --tag "${{ inputs.tag_name }}"
+          --repo "${{ github.repository }}"
 
       # One list of every downloadable file's hash, next to the per-file
       # .sha256 files (which scripts/install.sh uses). amigo-labs.dev links it

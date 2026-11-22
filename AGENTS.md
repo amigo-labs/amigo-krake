@@ -165,6 +165,9 @@ amigo-krake/
 │   │       ├── background.rs    # Background tasks (RSS, etc.)
 │   │       ├── ws.rs            # WebSocket endpoint
 │   │       ├── clicknload.rs    # Click'n'Load on port 9666
+│   │       ├── embedded.rs      # serve(): the whole server stack (binary + desktop app)
+│   │       ├── desktop/         # Desktop-app logic without Tauri (desktop.json, paths, links, updates)
+│   │       ├── desktop_session.rs # Per-launch desktop sign-in
 │   │       ├── nzbget_api.rs    # NZBGet JSON-RPC compat layer
 │   │       ├── resolver.rs      # URL → plugin resolver
 │   │       ├── webhooks.rs      # Outbound webhook dispatcher
@@ -213,8 +216,11 @@ amigo-krake/
 ├── tauri/
 │   ├── Cargo.toml
 │   ├── tauri.conf.json
+│   ├── windows/hooks.nsh        # NSIS hook: silent setup stores update_mode "auto"
 │   └── src/
-│       └── main.rs
+│       ├── main.rs
+│       ├── app.rs               # Window, tray, single instance, deep links
+│       └── updater.rs           # tauri-plugin-updater behind DesktopUpdater
 ├── plugin-sdk/                   # @amigo-labs/krake-plugin-sdk — TS SDK for plugin authors
 │   ├── package.json
 │   ├── tsconfig.json
@@ -232,7 +238,10 @@ amigo-krake/
 │   ├── types/
 │   │   └── krake.d.ts           # TypeScript type definitions
 │   ├── hosters/
+│   │   ├── bunkr/
+│   │   ├── filester/
 │   │   ├── generic-http/
+│   │   ├── gofile/
 │   │   └── xfilesharing/
 │   ├── multi-hosters/           # Premium aggregator plugins
 │   │   ├── alldebrid/
@@ -245,7 +254,10 @@ amigo-krake/
 │   └── de.json
 ├── scripts/
 │   ├── install.sh
-│   └── sign-update-archives.sh  # Ed25519 .sig for self-update archives
+│   ├── sign-update-archives.sh  # Ed25519 .sig for self-update archives
+│   ├── updater-latest-json.mjs  # Tauri 2 latest.json for the desktop updater
+│   ├── updater-key-id-guard.mjs # Desktop .sig files carry the pubkey's key ID
+│   └── fixtures/updater/        # Throwaway-key signatures for their CI smoke test
 ├── docker/
 │   ├── Dockerfile
 │   ├── Dockerfile.dev

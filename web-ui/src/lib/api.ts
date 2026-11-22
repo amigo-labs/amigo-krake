@@ -92,6 +92,15 @@ export interface CoreUpdateInfo {
   latest_version: string | null;
   update_available: boolean;
   release_notes: string | null;
+  /** "Server", "Docker", or "tauri" in the desktop app. */
+  distribution?: string;
+  /** Desktop app: false for debug builds and `.deb` / `.rpm` installs (AC-16). */
+  can_self_update?: boolean;
+  // Desktop app only (spec desktop-app, AC-17); absent on a plain server.
+  /** Version downloaded in this run; takes effect at the next start. */
+  pending_restart?: string | null;
+  update_mode?: UpdateMode;
+  update_mode_chosen?: boolean;
 }
 
 export interface PluginUpdate {
@@ -112,10 +121,44 @@ export interface UpdateCheck {
   plugins: PluginUpdate[];
 }
 
+/** The desktop app's update choice (spec desktop-app, AC-25 to AC-35). */
+export type UpdateMode = "auto" | "notify" | "off";
+
+/** `GET /updates/mode`; answers 404 outside the desktop app (AC-34). */
+export interface DesktopModeState {
+  /** The effective choice. */
+  update_mode: UpdateMode;
+  update_mode_chosen: boolean;
+  /** No choice stored and the first-start question not closed in this run. */
+  question_pending: boolean;
+  can_self_update: boolean;
+  pending_restart: string | null;
+  /** A version waiting to be announced ("notify"), or null. */
+  announcement: string | null;
+  /** false when `PUT /updates/mode` could not store the choice. */
+  saved?: boolean;
+}
+
+/** `POST /updates/core` answers `{"status":"ready","version":"…"}` in the desktop app. */
+export interface CoreApplyResult {
+  status?: string;
+  version?: string;
+  [key: string]: unknown;
+}
+
 export const checkUpdates = () => api<UpdateCheck>("GET", "/updates/check");
 export const listAvailablePlugins = () =>
   api<MarketplaceEntry[]>("GET", "/updates/plugins/available");
-export const applyCoreUpdate = () => api<unknown>("POST", "/updates/core");
+export const applyCoreUpdate = () => api<CoreApplyResult | undefined>("POST", "/updates/core");
+export const getUpdateMode = () => api<DesktopModeState>("GET", "/updates/mode");
+export const setUpdateMode = (mode: UpdateMode) =>
+  api<DesktopModeState>("PUT", "/updates/mode", { mode });
+/** The first-start question was closed without a choice (AC-26). */
+export const dismissUpdateQuestion = () =>
+  api<DesktopModeState>("PUT", "/updates/mode", { dismissed: true });
+/** Later, Escape, close or a successful Install of an announcement (AC-35). */
+export const markUpdateAnnounced = (version: string) =>
+  api<DesktopModeState>("POST", "/updates/announced", { version });
 export const getSystemInfo = () => api<unknown>("GET", "/system-info");
 
 // ========================================

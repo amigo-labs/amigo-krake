@@ -84,5 +84,11 @@
     "linklist.cli.rejected": "  Rejected: {link}: {reason}",
     "linklist.cli.summary": "Link list: queued {queued}, already queued {already}, rejected {rejected}, not recognized {not_recognized}",
     "linklist.cli.no_links": "{path}: contains no links ({count} lines not recognized)",
-    "linklist.cli.too_large": "{path}: larger than 1 MiB, the limit for a link list"
+    "linklist.cli.too_large": "{path}: larger than 1 MiB, the limit for a link list",
+
+    "desktop.tray.open": "Open",
+    "desktop.tray.pause_all": "Pause all",
+    "desktop.tray.resume_all": "Resume all",
+    "desktop.tray.quit": "Quit",
+    "desktop.magnet_unsupported": "Torrent and magnet links are not supported."
 }

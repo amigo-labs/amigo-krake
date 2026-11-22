@@ -54,6 +54,7 @@
   import { formatChord, registerBindings, startKeymap, type Binding } from "./lib/keymap";
   import { pruneSelection } from "./lib/selection";
   import PairingModal from "./components/PairingModal.svelte";
+  import UpdatePrompt from "./components/UpdatePrompt.svelte";
 
   // Pages are code-split: each is fetched on first navigation rather than
   // bundled into the initial payload, so the app shell loads faster. The
@@ -713,4 +714,5 @@
 <Toasts />
 <DropZone />
 <PairingModal />
+<UpdatePrompt />
 {/if}

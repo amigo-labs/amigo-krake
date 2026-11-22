@@ -39,6 +39,9 @@ pub struct AppState {
     /// Bumped after every config change; open WebSockets let in without a
     /// login check themselves again (AC-08).
     pub config_epoch: Arc<tokio::sync::watch::Sender<u64>>,
+    /// The desktop app's updater; `Some` only when the server runs embedded
+    /// in the desktop app (`docs/specs/desktop-app.md`).
+    pub desktop_updater: Option<Arc<dyn crate::update_api::DesktopUpdater>>,
 }
 
 impl AppState {
@@ -175,7 +178,10 @@ struct StatsResponse {
 
 #[derive(Serialize)]
 struct AddResponse {
+    /// The first download the add stands for.
     id: String,
+    /// Every download the add stands for, in package order.
+    ids: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -299,10 +305,16 @@ async fn add_download(
     let owner = principal_owner(&principal);
     match state
         .coordinator
-        .add_download_with_options(&req.url, req.filename, None, 0, owner)
+        .add_download_all(&req.url, req.filename, None, 0, owner)
         .await
     {
-        Ok(id) => Ok((StatusCode::CREATED, Json(AddResponse { id }))),
+        Ok(ids) => Ok((
+            StatusCode::CREATED,
+            Json(AddResponse {
+                id: ids[0].clone(),
+                ids,
+            }),
+        )),
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
@@ -689,7 +701,13 @@ async fn upload_nzb(
         .add_nzb_download(&first_name, &req.nzb_data, None)
         .await
     {
-        Ok(id) => Ok((StatusCode::CREATED, Json(AddResponse { id }))),
+        Ok(id) => Ok((
+            StatusCode::CREATED,
+            Json(AddResponse {
+                ids: vec![id.clone()],
+                id,
+            }),
+        )),
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {

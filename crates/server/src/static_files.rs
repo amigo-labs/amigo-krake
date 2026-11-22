@@ -50,7 +50,12 @@ async fn serve_static(req: Request) -> Response {
             .into_response();
     }
 
-    // SPA fallback: serve index.html for all non-file paths
+    // SPA fallback: serve index.html for all non-file paths. An unknown API
+    // path is a 404, not the web UI: a route that is not mounted (e.g. the
+    // desktop-only routes on a plain server) must not answer 200.
+    if path.starts_with("api/") {
+        return StatusCode::NOT_FOUND.into_response();
+    }
     if (!path.contains('.') || path.is_empty())
         && let Some(index) = WebUiAssets::get("index.html")
     {

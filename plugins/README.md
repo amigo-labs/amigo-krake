@@ -8,13 +8,20 @@ TypeScript/JavaScript plugin system powered by QuickJS-NG + SWC.
 plugins/
 ├── types/krake.d.ts          # Type declarations (KrakePlugin, DownloadInfo, krake.*)
 ├── template/plugin.ts        # Starter template — copy this
-├── generic-http/             # Built-in: smart HTTP link finder
-│   ├── plugin.ts
-│   └── plugin.spec.ts
-└── youtube/                  # Built-in: YouTube video downloads
-    ├── plugin.ts
-    └── plugin.spec.ts
+├── hosters/
+│   ├── bunkr/                # bunkr albums and files
+│   ├── filester/             # filester.me files and folders
+│   ├── generic-http/         # Smart HTTP link finder (fallback for any URL)
+│   ├── gofile/               # gofile.io folders
+│   └── xfilesharing/         # 50+ XFileSharingPro sites
+├── multi-hosters/            # alldebrid, premiumize, real-debrid
+└── extractors/
+    └── youtube/              # YouTube video downloads
 ```
+
+Each plugin folder holds `plugin.ts` and, where it has tests, `plugin.spec.ts`.
+Specs that must not reach the network replace `krake.httpGet` / `krake.httpPost`
+with fakes serving recorded responses (see `hosters/gofile/plugin.spec.ts`).
 
 ## Creating a Plugin
 

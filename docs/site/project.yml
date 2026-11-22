@@ -121,13 +121,14 @@ features:
 downloads:
   checksums: SHA256SUMS
   files:
-    # Desktop app (Tauri bundles; names carry the version)
-    - { os: windows, label: { en: Desktop app (installer), de: Desktop-App (Installer) }, arch: x64, match: "_x64-setup\\.exe$" }
-    - { os: windows, label: { en: Desktop app (MSI), de: Desktop-App (MSI) }, arch: x64, match: "_x64_en-US\\.msi$" }
-    - { os: macos, label: { en: Desktop app, de: Desktop-App }, arch: arm64, match: "_aarch64\\.dmg$" }
-    - { os: macos, label: { en: Desktop app, de: Desktop-App }, arch: x64, match: "_x64\\.dmg$" }
-    - { os: linux, label: { en: Desktop app (AppImage), de: Desktop-App (AppImage) }, arch: x64, match: "_amd64\\.AppImage$" }
-    - { os: linux, label: { en: Desktop app (.deb), de: Desktop-App (.deb) }, arch: x64, match: "_amd64\\.deb$" }
+    # Desktop app (Tauri bundles under stable names, so
+    # releases/latest/download/<asset> always resolves; docs/specs/desktop-app.md, AC-22)
+    - { os: windows, label: { en: Desktop app (installer), de: Desktop-App (Installer) }, arch: x64, asset: krake-windows-x64-setup.exe }
+    - { os: windows, label: { en: Desktop app (MSI), de: Desktop-App (MSI) }, arch: x64, asset: krake-windows-x64.msi }
+    - { os: macos, label: { en: Desktop app, de: Desktop-App }, arch: arm64, asset: krake-macos-arm64.dmg }
+    - { os: macos, label: { en: Desktop app, de: Desktop-App }, arch: x64, asset: krake-macos-x64.dmg }
+    - { os: linux, label: { en: Desktop app (AppImage), de: Desktop-App (AppImage) }, arch: x64, asset: krake-linux-x64.AppImage }
+    - { os: linux, label: { en: Desktop app (.deb), de: Desktop-App (.deb) }, arch: x64, asset: krake-linux-x64.deb }
     # Server (krake-server + plugin host)
     - { os: windows, label: { en: Server, de: Server }, arch: x64, asset: krake-server-windows-x86_64.zip }
     - { os: macos, label: { en: Server, de: Server }, arch: arm64, asset: krake-server-macos-aarch64.tar.gz }

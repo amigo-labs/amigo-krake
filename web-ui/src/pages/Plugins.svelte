@@ -6,6 +6,7 @@
     type Plugin, type MarketplaceEntry, type UpdateCheck, type PluginUpdate,
   } from "../lib/api";
   import { addToast } from "../lib/toast";
+  import { bannerView, readyVersion } from "../lib/desktopUpdates";
   import { locale, tr } from "../lib/i18n";
   import SkeletonCard from "../components/SkeletonCard.svelte";
   import Card from "@amigo-labs/krake-ui/components/Card.svelte";
@@ -83,11 +84,17 @@
     }
   });
 
+  // Desktop app: a successful apply answers `{"status":"ready"}` and the
+  // banner says the update takes effect at the next start (AC-18).
+  let readyAs = $state<string | null>(null);
+  let banner = $derived(bannerView(updateInfo, readyAs));
+
   async function handleCoreUpdate() {
     updating = true;
     try {
-      await applyCoreUpdate();
-      addToast("success", tr($locale, "plugins.update_started"));
+      const version = readyVersion(await applyCoreUpdate());
+      if (version) readyAs = version;
+      else addToast("success", tr($locale, "plugins.update_started"));
     } catch (e) {
       addToast("error", tr($locale, "plugins.update_failed"), e instanceof Error ? e.message : undefined);
     } finally {
@@ -149,14 +156,23 @@
 </script>
 
 <div class="space-y-6">
-  {#if updateInfo?.core?.update_available}
+  {#if banner.kind === "ready"}
+    <Banner tone="success" role="status" title={tr($locale, "updates.ready")}>
+      <span class="perm-mono">v{banner.version}</span>
+    </Banner>
+  {:else if banner.kind === "package-manager"}
+    <Banner tone="info" title={tr($locale, "plugins.core_update")}>
+      <span class="perm-mono">v{banner.from} &rarr; v{banner.to}</span>
+      {#snippet actions()}
+        <span class="core-hint">{tr($locale, "updates.package_manager")}</span>
+      {/snippet}
+    </Banner>
+  {:else if banner.kind === "offer"}
     <Banner
       tone="info"
       title={tr($locale, "plugins.core_update")}
     >
-      <span style="font-family: var(--font-mono)">
-        v{updateInfo.core.current_version} &rarr; v{updateInfo.core.latest_version}
-      </span>
+      <span class="perm-mono">v{banner.from} &rarr; v{banner.to}</span>
       {#snippet actions()}
         <Button variant="solid" size="sm" loading={updating} onclick={handleCoreUpdate}>
           {tr($locale, "plugins.update")}
@@ -392,5 +408,9 @@
   }
   .perm-mono {
     font-family: var(--font-mono);
+  }
+  .core-hint {
+    font-size: var(--font-xs);
+    color: var(--text-secondary);
   }
 </style>

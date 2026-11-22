@@ -569,41 +569,41 @@ pub enum UpdateMode {
 
 | AC    | Test | Status | Commit |
 | ----- | ---- | ------ | ------ |
-| AC-1 |      | open   |        |
-| AC-2 |      | open   |        |
-| AC-3 |      | open   |        |
-| AC-4 |      | open   |        |
-| AC-5 |      | open   |        |
-| AC-6 |      | open   |        |
-| AC-7 |      | open   |        |
-| AC-8 |      | open   |        |
-| AC-9 |      | open   |        |
-| AC-10 |      | open   |        |
-| AC-11 |      | open   |        |
-| AC-12 |      | open   |        |
-| AC-13 |      | open   |        |
-| AC-14 |      | open   |        |
-| AC-15 |      | open   |        |
-| AC-16 |      | open   |        |
-| AC-17 |      | open   |        |
-| AC-18 |      | open   |        |
-| AC-19 |      | open   |        |
-| AC-20 |      | open   |        |
-| AC-21 |      | open   |        |
-| AC-22 |      | open   |        |
-| AC-23 |      | open   |        |
-| AC-24 |      | open   |        |
-| AC-25 |      | open   |        |
-| AC-26 |      | open   |        |
-| AC-27 |      | open   |        |
-| AC-28 |      | open   |        |
-| AC-29 |      | open   |        |
-| AC-30 |      | open   |        |
-| AC-31 |      | open   |        |
-| AC-32 |      | open   |        |
-| AC-33 |      | open   |        |
-| AC-34 |      | open   |        |
-| AC-35 |      | open   |        |
+| AC-1 | `ac1_ac5_api_needs_a_credential_and_the_web_ui_is_served`, `ac1_dropping_the_handle_keeps_serving_and_shutdown_stops`, `ac1_the_server_binary_serves_the_same_stack` (crates/server/tests/desktop_tests.rs) | built |  |
+| AC-2 | `desktop::paths::tests::ac2_stored_port_is_reused_and_a_taken_one_is_replaced` (crates/server/src/desktop/paths.rs); tauri/src/app.rs opens the window at the bound port | built |  |
+| AC-3 | `ac3_the_launch_token_signs_in_once`, `ac3_the_session_belongs_to_the_desktop_principal`, `ac3_without_desktop_mode_the_route_does_not_exist` (crates/server/tests/desktop_tests.rs) | built |  |
+| AC-4 | `ac4_desktop_mode_needs_no_setup` (crates/server/tests/desktop_tests.rs) | built |  |
+| AC-5 | `ac1_ac5_api_needs_a_credential_and_the_web_ui_is_served` (crates/server/tests/desktop_tests.rs) | built |  |
+| AC-6 | `desktop::paths::tests::ac6_every_file_lives_under_app_data`, `ac6_first_start_downloads_go_to_the_user_downloads_folder`, `ac6_relative_folders_never_point_at_the_working_directory` (crates/server/src/desktop/paths.rs), `ac6_the_registry_cache_lives_with_the_plugins` (crates/server/tests/desktop_tests.rs) | built |  |
+| AC-7 | `ac7_the_plugin_host_is_bundled_as_a_sidecar` (crates/server/tests/desktop_conf_tests.rs); resolving a plugin URL in an installed release build: manual (first release) | built |  |
+| AC-8 | `ac8_clicknload_starts_once_through_serve` (crates/server/tests/desktop_tests.rs) | built |  |
+| AC-9 | `ac9_tray_pauses_and_resumes_every_download` (crates/server/tests/desktop_tests.rs); hide on close, tray menu: manual (first release) | built |  |
+| AC-10 | tauri-plugin-single-instance registered first in tauri/src/app.rs; focus and hand-over: manual (first release) | built |  |
+| AC-11 | `desktop::links::tests::ac11_*` (crates/server/src/desktop/links.rs), `ac11_a_link_to_a_private_address_is_refused_like_the_api_does` (crates/server/tests/desktop_tests.rs), `ac10_ac11_deep_link_schemes_are_registered` (crates/server/tests/desktop_conf_tests.rs) | built |  |
+| AC-12 | `desktop::links::tests::ac12_magnet_links_are_declined` (crates/server/src/desktop/links.rs); the notification: manual (first release) | built |  |
+| AC-13 | `ac13_is_due_after_the_interval_or_when_the_clock_went_back`, `ac13_ac15_auto_checks_when_due_and_installs`, `ac13_ac16_no_background_check_under_never_or_without_self_update` (crates/server/src/desktop/update.rs) | built |  |
+| AC-14 | `ac14_a_failed_verification_installs_nothing` (crates/server/src/desktop/update.rs), `ac14_the_updater_trusts_the_organization_key` (crates/server/tests/desktop_release_conf_tests.rs); tauri/src/updater.rs verifies before install or hold | built |  |
+| AC-15 | `ac13_ac15_auto_checks_when_due_and_installs` (crates/server/src/desktop/update.rs), `ac15_windows_installs_passively_and_the_updater_has_no_v1_keys` (crates/server/tests/desktop_release_conf_tests.rs); platform install: manual (first release) | built |  |
+| AC-16 | `ac16_self_update_only_in_release_and_never_from_deb_or_rpm` (crates/server/src/desktop/update.rs) | built |  |
+| AC-17 | `ac17_check_reports_the_desktop_update_and_its_state`, `ac17_apply_installs_through_the_hook` (crates/server/tests/desktop_tests.rs) | built |  |
+| AC-18 | "AC-18 …" tests (web-ui/test/desktopUpdates.test.ts, web-ui/test/updatePrompt.dom.test.ts) | built |  |
+| AC-19 | `ac19_the_bundle_creates_updater_artifacts` (crates/server/tests/desktop_release_conf_tests.rs); `.sig` per artifact: release workflow step "Stable asset names" (CI: release builds) | built |  |
+| AC-20 | CI job `updater-release-scripts` (scripts/updater-latest-json.mjs on scripts/fixtures/updater, missing / empty signature fails) | built |  |
+| AC-21 | CI job `updater-release-scripts` (scripts/updater-key-id-guard.mjs: own key passes, other key fails with file and both IDs, `UPDATER_SIGNING_KEY_ID` override) | built |  |
+| AC-22 | release-build.yml step "Stable asset names" (CI: release builds) | built |  |
+| AC-23 | docs/site/project.yml `downloads` with `asset:` stable names; links resolve after the release: manual | built |  |
+| AC-24 | release-build.yml installer job, first step fails naming each missing secret (CI: release builds) | built |  |
+| AC-25 | `ac25_ac34_a_fresh_copy_asks_and_answers_without_the_network` (crates/server/src/desktop/update.rs); "AC-25 …" tests (web-ui/test/desktopUpdates.test.ts, web-ui/test/updatePrompt.dom.test.ts) | built |  |
+| AC-26 | `ac26_confirm_stores_and_closing_stores_nothing`, `ac26_ac31_a_failed_write_still_applies_for_this_run` (crates/server/src/desktop/update.rs); "AC-26 …" tests (web-ui/test/desktopUpdates.test.ts, web-ui/test/updatePrompt.dom.test.ts) | built |  |
+| AC-27 | `ac27_no_background_check_while_the_question_is_open` (crates/server/src/desktop/update.rs) | built |  |
+| AC-28 | `ac28_ac35_notify_announces_each_version_once`, `ac28_an_unmarked_announcement_comes_back_after_a_restart` (crates/server/src/desktop/update.rs); "AC-28 …" tests (web-ui/test/desktopUpdates.test.ts, web-ui/test/updatePrompt.dom.test.ts) | built |  |
+| AC-29 | `ac29_never_check_still_allows_a_manual_apply` (crates/server/src/desktop/update.rs); "AC-29 …" test (web-ui/test/desktopUpdates.test.ts, web-ui/test/updatePrompt.dom.test.ts) | built |  |
+| AC-30 | `ac30_choices_take_effect_without_a_restart` (crates/server/src/desktop/update.rs); "AC-30 …" tests (web-ui/test/desktopUpdates.test.ts, web-ui/test/updatePrompt.dom.test.ts) | built |  |
+| AC-31 | `ac31_put_mode_makes_the_choice_or_records_a_close`, `ac31_ac34_ac35_routes_are_absent_outside_desktop_mode` (crates/server/tests/desktop_tests.rs) | built |  |
+| AC-32 | `ac32_the_installer_hooks_exist_and_store_auto_on_a_silent_setup` (crates/server/tests/desktop_release_conf_tests.rs); behaviour on a real Windows install: manual | built |  |
+| AC-33 | "AC-33 every update text exists in English and German" (web-ui/test/desktopUpdates.test.ts, web-ui/test/updatePrompt.dom.test.ts) | built |  |
+| AC-34 | `ac34_get_mode_answers_without_the_network` (crates/server/tests/desktop_tests.rs), `ac25_ac34_a_fresh_copy_asks_and_answers_without_the_network` (crates/server/src/desktop/update.rs) | built |  |
+| AC-35 | `ac35_announced_marks_only_the_pending_version` (crates/server/tests/desktop_tests.rs), `ac28_ac35_notify_announces_each_version_once` (crates/server/src/desktop/update.rs) | built |  |
 
 ## Decisions
 
@@ -642,3 +642,34 @@ pub enum UpdateMode {
   Tauri IPC and showing the announcement must not mark it; a waiting apply
   still installs after a shared check, because a check alone cannot satisfy
   an apply. Two more desktop-only routes, listed for review.
+- 2026-11-22 (build, P1/P2): the desktop logic that needs no Tauri —
+  `desktop.json`, paths, the listener, deep links, the tray actions and
+  (P3) the update controller — lives in `crates/server/src/desktop/`
+  instead of `tauri/src/state.rs` / `updater.rs`, because the workspace
+  test gate excludes `krake-desktop` (its `tauri` feature needs GTK and
+  WebKit); `tauri/src/` keeps only the Tauri glue. The Tauri code is
+  compiled by a new CI job (`desktop`).
+- 2026-11-22 (build): `ServerHandle` also carries the server `task`, so the
+  binary can wait on it; dropping the handle does not stop the server.
+- 2026-11-22 (build): in desktop mode the desktop session sees the events of
+  every download, also those Click'n'Load or the watch folder add without an
+  owner, because it is the app's only user. A plain server keeps scoping
+  sessions to their own downloads.
+- 2026-11-22 (build): an unknown `/api/...` path answers 404 instead of the
+  web UI's `index.html`, so desktop-only routes are absent on a plain
+  server (AC-3, AC-31, AC-34, AC-35).
+- 2026-11-22 (build): `tauri-plugin-shell` and the `protocol-asset` feature
+  are dropped — unused once the window loads the server's origin.
+- 2026-11-22 (build, P3): the desktop fields of `GET /updates/check`
+  (`pending_restart`, `update_mode`, `update_mode_chosen`) sit inside `core`
+  next to `distribution` and `can_self_update`; "up to date" on
+  `POST /updates/core` answers 502 with that reason, because the route's
+  contract only has "ready". The release fixtures are signed with a
+  throwaway key, because the org key never leaves the release secrets; the
+  real `.sig` files pass the same guard during a release.
+- 2026-11-22 (acceptance round 1): deep links run the same outbound-URL
+  guard as `POST /downloads` (`desktop::links::queue_link`); a second
+  launch's links are handled only through the deep-link event (the
+  single-instance plugin's `deep-link` feature emits it), not also from its
+  `argv`, so a link is queued and a magnet notice shown once.
+

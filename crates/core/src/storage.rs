@@ -704,7 +704,7 @@ impl Storage {
             "INSERT OR REPLACE INTO history
                  (id, url, protocol, filename, filesize, download_dir, completed_at, status, metadata)
              SELECT id, url, protocol, filename, filesize, download_dir, datetime('now'), status,
-                    CASE WHEN json_valid(metadata) THEN json_remove(metadata, '$.nzb_data') END
+                    CASE WHEN json_valid(metadata) THEN json_remove(metadata, '$.nzb_data', '$.request_headers') END
              FROM downloads WHERE id = ?1",
             rusqlite::params![id],
         )?;
@@ -718,7 +718,7 @@ impl Storage {
             "INSERT INTO history
                  (id, url, protocol, filename, filesize, download_dir, completed_at, status, metadata)
              SELECT id, url, protocol, filename, filesize, download_dir, datetime('now'), status,
-                    CASE WHEN json_valid(metadata) THEN json_remove(metadata, '$.nzb_data') END
+                    CASE WHEN json_valid(metadata) THEN json_remove(metadata, '$.nzb_data', '$.request_headers') END
              FROM downloads WHERE id = ?1",
             rusqlite::params![id],
         )?;

@@ -15,6 +15,7 @@
   import SettingsWebhooks from "../components/settings/SettingsWebhooks.svelte";
   import SettingsRssFeeds from "../components/settings/SettingsRssFeeds.svelte";
   import SettingsSecurity from "../components/settings/SettingsSecurity.svelte";
+  import SettingsAbout from "../components/settings/SettingsAbout.svelte";
   import SkeletonCard from "../components/SkeletonCard.svelte";
 
   let config = $state<AppConfig | null>(null);
@@ -75,21 +76,7 @@
   </section>
 
   <!-- About -->
-  <section>
-    <h3 class="text-lg font-bold mb-4" style="color: var(--text-primary)">{tr($locale, "settings.about")}</h3>
-    <div class="rounded-xl p-5" style="background: var(--bg-surface); border: 1px solid var(--border-color)">
-      <div class="flex items-center gap-4">
-        <img src="/icon.svg" alt="Krake" width="40" height="40" />
-        <div>
-          <p class="font-bold" style="color: var(--text-primary)">Krake</p>
-          <p class="text-sm" style="color: var(--text-secondary)">v0.1.0 — Fast, modular download manager</p>
-          <p class="text-xs mt-1" style="font-family: var(--font-mono);color: var(--text-secondary)">
-            github.com/amigo-labs/amigo-krake
-          </p>
-        </div>
-      </div>
-    </div>
-  </section>
+  <SettingsAbout />
 </div>
 {:else}
 <SkeletonCard count={3} />

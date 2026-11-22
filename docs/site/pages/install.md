@@ -62,6 +62,17 @@ The script takes `krake` from the latest release, checks its SHA-256 checksum an
 
 Installers for Windows, macOS and Linux are attached to each release. The app bundles the server and opens the same interface in its own window.
 
+| System | Download |
+|---|---|
+| Windows (x64) | [installer](https://github.com/amigo-labs/amigo-krake/releases/latest/download/krake-windows-x64-setup.exe) |
+| Windows (x64) | [MSI](https://github.com/amigo-labs/amigo-krake/releases/latest/download/krake-windows-x64.msi) |
+| macOS (Apple silicon) | [disk image](https://github.com/amigo-labs/amigo-krake/releases/latest/download/krake-macos-arm64.dmg) |
+| macOS (Intel) | [disk image](https://github.com/amigo-labs/amigo-krake/releases/latest/download/krake-macos-x64.dmg) |
+| Linux (x64) | [AppImage](https://github.com/amigo-labs/amigo-krake/releases/latest/download/krake-linux-x64.AppImage) |
+| Linux (x64) | [Debian / Ubuntu package](https://github.com/amigo-labs/amigo-krake/releases/latest/download/krake-linux-x64.deb) |
+
+These links always point to the latest release. The app updates itself, except a `.deb` install, which updates through your package manager.
+
 ## On your phone
 
 The Web UI works in any phone browser. To install it as an app and share links to it, the server must be reachable over HTTPS with a certificate the phone trusts (for example behind a reverse proxy; set `KRAKE_TRUST_PROXY=true`), and the browser must support sharing to installed web apps (Chrome on Android does).

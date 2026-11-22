@@ -56,6 +56,9 @@ if [[ ${#archives[@]} -eq 0 ]]; then
 fi
 
 for archive in "${archives[@]}"; do
+  # krake-macos-<arch>.app.tar.gz is the desktop app's updater bundle; its
+  # .sig is the minisign signature tauri-cli wrote (docs/specs/desktop-app.md).
+  [[ "$archive" == *.app.tar.gz ]] && continue
   sig="$work/sig.bin"
   openssl pkeyutl -sign -rawin -keyform DER -inkey "$key" -in "$archive" -out "$sig"
   openssl pkeyutl -verify -rawin -pubin -keyform DER -inkey "$pub" \

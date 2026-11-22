@@ -8,24 +8,13 @@
     "frontendDist": "../web-ui/dist"
   },
   "app": {
-    "windows": [
-      {
-        "title": "Krake",
-        "width": 1200,
-        "height": 800,
-        "minWidth": 400,
-        "minHeight": 300,
-        "decorations": true,
-        "transparent": false
-      }
-    ],
     "security": {
       "csp": "default-src 'self'; connect-src 'self' ws://localhost:* http://localhost:*; style-src 'self' 'unsafe-inline'; font-src 'self'"
     }
   },
   "bundle": {
-    "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -43,7 +32,15 @@
           "ca-certificates"
         ]
       }
-    }
+    },
+    "windows": {
+      "nsis": {
+        "installerHooks": "windows/hooks.nsh"
+      }
+    },
+    "externalBin": [
+      "binaries/krake-plugin-host"
+    ]
   },
   "plugins": {
     "deep-link": {
@@ -64,11 +61,13 @@
       ]
     },
     "updater": {
-      "active": false,
       "endpoints": [
         "https://github.com/amigo-labs/amigo-krake/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMwOTg1MDRDMTUzOEI4RjYKUldUMnVEZ1ZURkNZTUd1ZSsyS2grT05uc1U1aWdPazgvaVlsTlgrdm8zRHE1SEFIN0FTNjhMZksK"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMwOTg1MDRDMTUzOEI4RjYKUldUMnVEZ1ZURkNZTUd1ZSsyS2grT05uc1U1aWdPazgvaVlsTlgrdm8zRHE1SEFIN0FTNjhMZksK",
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }

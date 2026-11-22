@@ -62,6 +62,17 @@ Das Skript nimmt `krake` aus dem neuesten Release, prüft die SHA-256-Prüfsumme
 
 Installer für Windows, macOS und Linux hängen an jedem Release. Die App bringt den Server mit und zeigt dieselbe Oberfläche in einem eigenen Fenster.
 
+| System | Download |
+|---|---|
+| Windows (x64) | [Installer](https://github.com/amigo-labs/amigo-krake/releases/latest/download/krake-windows-x64-setup.exe) |
+| Windows (x64) | [MSI](https://github.com/amigo-labs/amigo-krake/releases/latest/download/krake-windows-x64.msi) |
+| macOS (Apple Silicon) | [Disk-Image](https://github.com/amigo-labs/amigo-krake/releases/latest/download/krake-macos-arm64.dmg) |
+| macOS (Intel) | [Disk-Image](https://github.com/amigo-labs/amigo-krake/releases/latest/download/krake-macos-x64.dmg) |
+| Linux (x64) | [AppImage](https://github.com/amigo-labs/amigo-krake/releases/latest/download/krake-linux-x64.AppImage) |
+| Linux (x64) | [Debian-/Ubuntu-Paket](https://github.com/amigo-labs/amigo-krake/releases/latest/download/krake-linux-x64.deb) |
+
+Die Links zeigen immer auf das neueste Release. Die App aktualisiert sich selbst, außer bei einer `.deb`-Installation, die der Paketmanager aktualisiert.
+
 ## Auf dem Handy
 
 Die Web-Oberfläche läuft in jedem Handy-Browser. Um sie als App zu installieren und Links an sie zu teilen, muss der Server über HTTPS mit einem Zertifikat erreichbar sein, dem das Handy vertraut (zum Beispiel hinter einem Reverse-Proxy; setze `KRAKE_TRUST_PROXY=true`), und der Browser muss das Teilen an installierte Web-Apps unterstützen (Chrome unter Android kann das).

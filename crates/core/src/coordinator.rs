@@ -17,7 +17,7 @@ use crate::protocol::http::{DownloadProgress, HttpDownloader};
 use crate::protocol::usenet::UsenetConfig;
 use crate::protocol::usenet::UsenetDownloader;
 use crate::protocol::usenet::nntp::NntpServerConfig;
-use crate::protocol::{Protocol, ResolvedDownload, UrlResolver};
+use crate::protocol::{Protocol, ResolvedDownload, ResolvedPackage, UrlResolver};
 use crate::queue::QueueStatus;
 use crate::retry::{RetryOutcome, RetryPolicy, retry_with_policy};
 use crate::storage::{DownloadRow, Storage};
@@ -331,6 +331,9 @@ impl Coordinator {
     /// Add a download with category, priority, and owning principal. `owner`
     /// (e.g. a login username) scopes the download's real-time events to that
     /// principal; `None` leaves it unowned (admin-only in the event stream).
+    ///
+    /// Returns the id of the first download the URL stands for; see
+    /// [`add_download_all`](Self::add_download_all) for folders and albums.
     pub async fn add_download_with_options(
         &self,
         url: &str,
@@ -339,25 +342,32 @@ impl Coordinator {
         priority: i32,
         owner: Option<String>,
     ) -> Result<String, crate::Error> {
+        let ids = self
+            .add_download_all(url, filename, category, priority, owner)
+            .await?;
+        ids.into_iter()
+            .next()
+            .ok_or_else(|| crate::Error::Other(format!("nothing was queued for {url}")))
+    }
+
+    /// Add every download `url` stands for: one for a file link, one per
+    /// file for a folder or album a plugin resolves it to. Returns their
+    /// ids in package order; an entry whose URL is already queued reports
+    /// the existing download's id.
+    pub async fn add_download_all(
+        &self,
+        url: &str,
+        filename: Option<String>,
+        category: Option<String>,
+        priority: i32,
+        owner: Option<String>,
+    ) -> Result<Vec<String>, crate::Error> {
         // Duplicate detection: check if same URL is already queued/downloading.
         // Indexed point lookup rather than scanning every download.
         if let Some(dup_id) = self.storage.find_active_download_by_url(url).await? {
             info!("Duplicate download skipped: {} (existing: {})", url, dup_id);
-            return Ok(dup_id);
+            return Ok(vec![dup_id]);
         }
-
-        let id = Uuid::new_v4().to_string();
-
-        // Try URL resolution: plugins → extractors → raw URL fallback
-        let resolved = self.resolve_url(url).await;
-        let (download_url, resolved_filename, protocol) = match &resolved {
-            Some(r) => (
-                r.url.clone(),
-                r.filename.clone().or(filename.clone()),
-                r.protocol.clone(),
-            ),
-            None => (url.to_string(), filename.clone(), detect_protocol(url)),
-        };
 
         // Determine download directory (category-based subdirectory if set).
         //
@@ -379,19 +389,79 @@ impl Coordinator {
             None => base_dir,
         };
 
+        // Try URL resolution: plugins → extractors → raw URL fallback
+        let (entries, download_dir) = match self.resolve_url(url).await {
+            Some(package) => {
+                let mut entries = self.expand_entries(url, &package).await;
+                if entries.is_empty() {
+                    return Err(crate::Error::Other(format!(
+                        "plugin '{}' returned no downloads for {url}",
+                        package.resolver
+                    )));
+                }
+                if entries.len() == 1 {
+                    let entry = &mut entries[0];
+                    entry.filename = entry.filename.take().or(filename);
+                    (entries, download_dir)
+                } else {
+                    let folder = package_folder_name(&package);
+                    (entries, format!("{download_dir}/{folder}"))
+                }
+            }
+            None => (
+                vec![ResolvedDownload {
+                    url: url.to_string(),
+                    filename,
+                    filesize: None,
+                    protocol: detect_protocol(url),
+                    headers: HashMap::new(),
+                }],
+                download_dir,
+            ),
+        };
+
+        let mut ids = Vec::with_capacity(entries.len());
+        for entry in entries {
+            let id = self
+                .insert_entry(
+                    url,
+                    entry,
+                    &download_dir,
+                    sanitized_category.as_deref(),
+                    priority,
+                    owner.clone(),
+                )
+                .await?;
+            ids.push(id);
+        }
+        Ok(ids)
+    }
+
+    /// Queue one resolved file; returns its id, or the id of the download
+    /// already queued under its URL.
+    async fn insert_entry(
+        &self,
+        added_url: &str,
+        entry: ResolvedDownload,
+        download_dir: &str,
+        category: Option<&str>,
+        priority: i32,
+        owner: Option<String>,
+    ) -> Result<String, crate::Error> {
+        let id = Uuid::new_v4().to_string();
         let row = DownloadRow {
             id: id.clone(),
-            url: download_url,
-            protocol: protocol.as_str().to_string(),
-            filename: resolved_filename,
-            filesize: resolved.as_ref().and_then(|r| r.filesize),
+            url: entry.url.clone(),
+            protocol: entry.protocol.as_str().to_string(),
+            filename: entry.filename,
+            filesize: entry.filesize,
             status: QueueStatus::Queued.as_str().to_string(),
             priority,
             // A category is not a package: `package_id` must name a row of
             // `packages`. The category lives in the metadata.
             package_id: None,
             plugin_id: None,
-            download_dir: Some(download_dir),
+            download_dir: Some(download_dir.to_string()),
             bytes_downloaded: 0,
             speed_current: 0,
             error_message: None,
@@ -402,27 +472,84 @@ impl Coordinator {
             owner: owner.clone(),
         };
 
-        // The pre-check above is a fast path; the partial-unique index in the
-        // schema is the authoritative race-safe guard. If a concurrent insert
-        // beat us to it, storage returns DuplicateUrl with the existing id.
+        // The partial-unique index in the schema is the authoritative
+        // race-safe duplicate guard: a URL already queued returns its id.
         match self.storage.insert_download(&row).await {
             Ok(()) => {}
             Err(crate::Error::DuplicateUrl(existing_id)) => {
                 info!(
-                    "Duplicate download race resolved: {} -> existing {}",
-                    url, existing_id
+                    "Duplicate download skipped: {} -> existing {}",
+                    entry.url, existing_id
                 );
                 return Ok(existing_id);
             }
             Err(e) => return Err(e),
         }
-        if let Some(category) = sanitized_category {
+        let mut metadata = serde_json::Map::new();
+        if let Some(category) = category {
+            metadata.insert("category".into(), serde_json::json!(category));
+        }
+        if !entry.headers.is_empty() {
+            metadata.insert(REQUEST_HEADERS_KEY.into(), serde_json::json!(entry.headers));
+        }
+        if !metadata.is_empty() {
             self.storage
-                .merge_download_metadata(&id, &serde_json::json!({ "category": category }))
+                .merge_download_metadata(&id, &serde_json::Value::Object(metadata))
                 .await?;
         }
-        self.announce_and_start(&id, url, owner).await?;
+        let announced = if entry.url == added_url {
+            added_url
+        } else {
+            entry.url.as_str()
+        };
+        self.announce_and_start(&id, announced, owner).await?;
         Ok(id)
+    }
+
+    /// The files a resolved package stands for. An entry the same resolver
+    /// claims (a file page of an album) is resolved once more; what that
+    /// returns is taken as is, except entries the resolver claims again,
+    /// which are deeper than one level and skipped.
+    async fn expand_entries(
+        &self,
+        added_url: &str,
+        package: &ResolvedPackage,
+    ) -> Vec<ResolvedDownload> {
+        let mut out = Vec::with_capacity(package.downloads.len());
+        for entry in &package.downloads {
+            if entry.url == added_url || !self.claimed_by(&entry.url, &package.resolver).await {
+                out.push(entry.clone());
+                continue;
+            }
+            let Some(sub) = self.resolve_url(&entry.url).await else {
+                warn!(
+                    "Could not resolve entry {} of {added_url}; skipped",
+                    entry.url
+                );
+                continue;
+            };
+            for inner in sub.downloads {
+                if inner.url != entry.url && self.claimed_by(&inner.url, &package.resolver).await {
+                    warn!(
+                        "Entry {} of {added_url} is nested deeper than one level; skipped",
+                        inner.url
+                    );
+                    continue;
+                }
+                out.push(inner);
+            }
+        }
+        out
+    }
+
+    /// Whether `resolver` is the one that would handle `url`.
+    async fn claimed_by(&self, url: &str, resolver: &str) -> bool {
+        for r in &self.resolvers {
+            if let Some(id) = r.claimant(url).await {
+                return id == resolver;
+            }
+        }
+        false
     }
 
     /// Add an NZB as a Usenet download named `name` (its release name).
@@ -640,6 +767,8 @@ impl Coordinator {
             .get_download(id)
             .await?
             .ok_or_else(|| crate::Error::Other(format!("Download not found: {id}")))?;
+        let request_headers =
+            request_headers_of(self.storage.get_download_metadata(id).await?.as_deref());
 
         self.storage
             .update_download_status(id, QueueStatus::Downloading)
@@ -736,6 +865,7 @@ impl Coordinator {
                 let user_agent = &user_agent;
                 let bandwidth = &bandwidth;
                 let row_filename = &row.filename;
+                let request_headers = &request_headers;
 
                 async move {
                     if attempt > 0 {
@@ -753,7 +883,7 @@ impl Coordinator {
                         download_dir: download_dir.clone(),
                         temp_dir: temp_dir.clone(),
                         filename: row_filename.clone(),
-                        headers: std::collections::HashMap::new(),
+                        headers: request_headers.clone(),
                         max_chunks,
                         user_agent: user_agent.to_string(),
                     };
@@ -1038,13 +1168,14 @@ impl Coordinator {
     }
 
     /// Try each registered URL resolver in order. Returns None if no resolver matches.
-    async fn resolve_url(&self, url: &str) -> Option<ResolvedDownload> {
+    async fn resolve_url(&self, url: &str) -> Option<ResolvedPackage> {
         for resolver in &self.resolvers {
             match resolver.resolve(url).await {
                 Some(resolved) => {
                     info!(
-                        "URL resolved: {url} → {} (protocol: {:?})",
-                        resolved.url, resolved.protocol
+                        "URL resolved: {url} → {} download(s) by {}",
+                        resolved.downloads.len(),
+                        resolved.resolver
                     );
                     return Some(resolved);
                 }
@@ -1053,6 +1184,31 @@ impl Coordinator {
         }
         None
     }
+}
+
+/// Metadata key of the headers (cookies merged) a download's transfer sends.
+pub const REQUEST_HEADERS_KEY: &str = "request_headers";
+
+/// The folder a multi-file package is saved in: the package name made safe
+/// as one path component, or the resolver's id when the name is empty.
+fn package_folder_name(package: &ResolvedPackage) -> String {
+    let name = package.name.replace(['/', '\\'], "_");
+    if name
+        .trim_matches(|c: char| c == '.' || c.is_whitespace())
+        .is_empty()
+    {
+        crate::sanitize_filename(&package.resolver)
+    } else {
+        crate::sanitize_filename(&name)
+    }
+}
+
+/// The headers stored with a download for its transfer requests.
+fn request_headers_of(metadata: Option<&str>) -> HashMap<String, String> {
+    metadata
+        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+        .and_then(|v| serde_json::from_value(v[REQUEST_HEADERS_KEY].clone()).ok())
+        .unwrap_or_default()
 }
 
 /// Copy a running transfer's progress into its row.

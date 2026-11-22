@@ -74,6 +74,39 @@ jobs:
       - name: Test
         run: cargo test --workspace --exclude krake-desktop --locked
 
+  desktop:
+    # The Tauri app (feature `tauri`) needs GTK and WebKit; nothing else
+    # compiles it before a release (docs/specs/desktop-app.md, test plan).
+    name: Desktop app (clippy, feature tauri)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@1.99.0
+        with:
+          components: clippy
+          targets: wasm32-unknown-unknown
+
+      - name: Install system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler clang lld \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      # The bundle names the plugin host as a sidecar; the release build puts
+      # the real binary there, a check only needs the file to exist.
+      - name: Web UI stub and sidecar placeholder
+        run: |
+          mkdir -p web-ui/dist tauri/binaries
+          touch "tauri/binaries/krake-plugin-host-$(rustc -vV | sed -n 's/^host: //p')"
+
+      - name: Clippy
+        run: cargo clippy -p krake-desktop --features tauri --all-targets --locked -- -D warnings
+
   registry-check:
     # A plugin whose source changed must raise its version above the one on
     # the published `registry` branch (docs/specs/plugin-registry.md, AC-13).
@@ -125,9 +158,12 @@ jobs:
           seed="$(openssl pkey -in "$work/key.pem" -outform DER | tail -c 32 | hex)"
           pub="$(openssl pkey -in "$work/key.pem" -pubout -outform DER | tail -c 32 | hex)"
           head -c 4096 /dev/urandom > "$work/krake-server-linux-x86_64.tar.gz"
+          # The desktop updater bundle keeps the minisign .sig tauri-cli wrote.
+          cp scripts/fixtures/updater/good/krake-macos-x64.app.tar.gz* "$work"/
           KRAKE_UPDATE_SIGNING_KEY="$seed" KRAKE_UPDATE_PUBKEY_HEX="$pub" \
             scripts/sign-update-archives.sh "$work"
           test "$(wc -c < "$work/krake-server-linux-x86_64.tar.gz.sig")" -eq 128
+          cmp "$work/krake-macos-x64.app.tar.gz.sig" scripts/fixtures/updater/good/krake-macos-x64.app.tar.gz.sig
           # The job's placeholder KRAKE_UPDATE_PUBKEY_HEX does not match.
           if KRAKE_UPDATE_SIGNING_KEY="$seed" scripts/sign-update-archives.sh "$work"; then
             echo "a seed that does not match the pinned key was accepted" >&2
@@ -147,6 +183,88 @@ jobs:
         run: mkdir -p web-ui/dist
       - name: cargo check --release (server + CLI + plugin host)
         run: cargo check --release --locked -p krake-server -p krake-cli -p krake-plugin-runtime
+
+  updater-release-scripts:
+    # The desktop updater's release steps (docs/specs/desktop-app.md, AC-20,
+    # AC-21) on fixtures signed with throwaway minisign keys
+    # (scripts/fixtures/updater/generate.mjs); release-build.yml runs the same
+    # scripts on the real signatures.
+    name: Updater release scripts (latest.json, key-ID guard)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Key-ID guard
+        run: |
+          set -euo pipefail
+          fx=scripts/fixtures/updater
+          work="$(mktemp -d)"
+          cp "$fx"/good/* "$work"/
+          # A CLI / server archive signature (128 hex chars) is not a Tauri one.
+          printf '%0128d' 0 > "$work/krake-linux-x86_64.tar.gz.sig"
+          test_id="$(sed -n 's/^test //p' "$fx/KEY_IDS")"
+
+          # Signed with the configured key: passes.
+          node scripts/updater-key-id-guard.mjs "$work" --conf "$fx/tauri.conf.json"
+          # The real config trusts only the organization key ...
+          if node scripts/updater-key-id-guard.mjs "$work"; then
+            echo "signatures from a key other than the organization's were accepted" >&2
+            exit 1
+          fi
+          # ... unless a rotation's bridge release names the key.
+          UPDATER_SIGNING_KEY_ID="$test_id" node scripts/updater-key-id-guard.mjs "$work"
+
+          # One .sig from another key fails.
+          cp "$fx/other-key/krake-linux-x64.AppImage.sig" "$work"/
+          if node scripts/updater-key-id-guard.mjs "$work" --conf "$fx/tauri.conf.json"; then
+            echo "a .sig from another key was accepted" >&2
+            exit 1
+          fi
+
+      - name: latest.json generator
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          cp scripts/fixtures/updater/good/* "$work"/
+          node scripts/updater-latest-json.mjs "$work" --version 1.2.3 --tag v1.2.3
+          node -e '
+            const m = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+            const base = "https://github.com/amigo-labs/amigo-krake/releases/download/v1.2.3/";
+            const want = {
+              "windows-x86_64": "krake-windows-x64-setup.exe",
+              "windows-x86_64-nsis": "krake-windows-x64-setup.exe",
+              "windows-x86_64-msi": "krake-windows-x64.msi",
+              "darwin-x86_64": "krake-macos-x64.app.tar.gz",
+              "darwin-aarch64": "krake-macos-arm64.app.tar.gz",
+              "linux-x86_64": "krake-linux-x64.AppImage",
+              "linux-x86_64-appimage": "krake-linux-x64.AppImage",
+            };
+            if (m.version !== "1.2.3") throw new Error("version " + m.version);
+            for (const [p, asset] of Object.entries(want)) {
+              const e = m.platforms[p];
+              const sig = require("fs").readFileSync(process.argv[2] + "/" + asset + ".sig", "utf8").trim();
+              if (!e || e.url !== base + asset || !e.signature || e.signature !== sig)
+                throw new Error(p + ": " + JSON.stringify(e));
+            }' "$work/latest.json" "$work"
+
+          # A missing signature fails and writes nothing ...
+          rm "$work/latest.json" "$work/krake-macos-arm64.app.tar.gz.sig"
+          if node scripts/updater-latest-json.mjs "$work" --version 1.2.3 --tag v1.2.3; then
+            echo "latest.json was written without the darwin-aarch64 signature" >&2
+            exit 1
+          fi
+          test ! -e "$work/latest.json"
+          # ... and so does an empty one.
+          : > "$work/krake-macos-arm64.app.tar.gz.sig"
+          if node scripts/updater-latest-json.mjs "$work" --version 1.2.3 --tag v1.2.3; then
+            echo "latest.json was written with an empty signature" >&2
+            exit 1
+          fi
+          test ! -e "$work/latest.json"
 
   cargo-audit:
     name: Cargo audit (known vulnerabilities)

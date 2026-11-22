@@ -44,7 +44,15 @@ async fn ws_handler(
     // is broadcast, causing the client to silently miss it.
     let rx = state.coordinator.subscribe();
     let coordinator = state.coordinator.clone();
-    let principal = principal.map(|Extension(p)| p);
+    let mut principal = principal.map(|Extension(p)| p);
+    // In the desktop app the desktop session is the only user: it sees every
+    // download, also those Click'n'Load or the watch folder added unowned.
+    if state.desktop_updater.is_some()
+        && matches!(&principal, Some(Principal::Session { username, .. })
+            if username == crate::desktop_session::DESKTOP_PRINCIPAL)
+    {
+        principal = Some(Principal::Preshared);
+    }
     // A socket let in without a login is checked again after every config
     // change and closed once the login mode no longer lets it in (AC-08).
     let recheck = matches!(principal, Some(Principal::Local { .. })).then(|| LocalRecheck {
