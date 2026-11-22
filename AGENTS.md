@@ -216,6 +216,7 @@ amigo-krake/
 ├── tauri/
 │   ├── Cargo.toml
 │   ├── tauri.conf.json
+│   ├── windows/hooks.nsh        # NSIS hook: silent setup stores update_mode "auto"
 │   └── src/
 │       ├── main.rs
 │       ├── app.rs               # Window, tray, single instance, deep links
@@ -253,7 +254,10 @@ amigo-krake/
 │   └── de.json
 ├── scripts/
 │   ├── install.sh
-│   └── sign-update-archives.sh  # Ed25519 .sig for self-update archives
+│   ├── sign-update-archives.sh  # Ed25519 .sig for self-update archives
+│   ├── updater-latest-json.mjs  # Tauri 2 latest.json for the desktop updater
+│   ├── updater-key-id-guard.mjs # Desktop .sig files carry the pubkey's key ID
+│   └── fixtures/updater/        # Throwaway-key signatures for their CI smoke test
 ├── docker/
 │   ├── Dockerfile
 │   ├── Dockerfile.dev
