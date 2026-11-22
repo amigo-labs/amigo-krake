@@ -74,6 +74,39 @@ jobs:
       - name: Test
         run: cargo test --workspace --exclude krake-desktop --locked
 
+  desktop:
+    # The Tauri app (feature `tauri`) needs GTK and WebKit; nothing else
+    # compiles it before a release (docs/specs/desktop-app.md, test plan).
+    name: Desktop app (clippy, feature tauri)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@1.99.0
+        with:
+          components: clippy
+          targets: wasm32-unknown-unknown
+
+      - name: Install system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler clang lld \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      # The bundle names the plugin host as a sidecar; the release build puts
+      # the real binary there, a check only needs the file to exist.
+      - name: Web UI stub and sidecar placeholder
+        run: |
+          mkdir -p web-ui/dist tauri/binaries
+          touch "tauri/binaries/krake-plugin-host-$(rustc -vV | sed -n 's/^host: //p')"
+
+      - name: Clippy
+        run: cargo clippy -p krake-desktop --features tauri --all-targets --locked -- -D warnings
+
   registry-check:
     # A plugin whose source changed must raise its version above the one on
     # the published `registry` branch (docs/specs/plugin-registry.md, AC-13).

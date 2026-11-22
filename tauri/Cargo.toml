@@ -18,7 +18,7 @@ workspace = true
 
 [features]
 default = []
-tauri = ["dep:tauri", "dep:tauri-build", "dep:tauri-plugin-shell", "dep:tauri-plugin-notification", "dep:tauri-plugin-deep-link", "dep:tauri-plugin-updater", "dep:krake-server"]
+tauri = ["dep:tauri", "dep:tauri-build", "dep:tauri-plugin-notification", "dep:tauri-plugin-deep-link", "dep:tauri-plugin-single-instance", "dep:tauri-plugin-updater", "dep:krake-server", "dep:async-trait"]
 
 [dependencies]
 krake-core = { workspace = true }
@@ -30,11 +30,12 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
 # Tauri dependencies (activated by "tauri" feature, which `cargo tauri build` enables)
-tauri = { version = "2", features = ["tray-icon", "protocol-asset"], optional = true }
-tauri-plugin-shell = { version = "2", optional = true }
+tauri = { version = "2", features = ["tray-icon"], optional = true }
 tauri-plugin-notification = { version = "2", optional = true }
 tauri-plugin-deep-link = { version = "2", optional = true }
 tauri-plugin-updater = { version = "2", optional = true }
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"], optional = true }
+async-trait = { workspace = true, optional = true }
 krake-server = { path = "../crates/server", optional = true }
 
 [build-dependencies]

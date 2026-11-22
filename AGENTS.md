@@ -165,6 +165,9 @@ amigo-krake/
 │   │       ├── background.rs    # Background tasks (RSS, etc.)
 │   │       ├── ws.rs            # WebSocket endpoint
 │   │       ├── clicknload.rs    # Click'n'Load on port 9666
+│   │       ├── embedded.rs      # serve(): the whole server stack (binary + desktop app)
+│   │       ├── desktop/         # Desktop-app logic without Tauri (desktop.json, paths, links, updates)
+│   │       ├── desktop_session.rs # Per-launch desktop sign-in
 │   │       ├── nzbget_api.rs    # NZBGet JSON-RPC compat layer
 │   │       ├── resolver.rs      # URL → plugin resolver
 │   │       ├── webhooks.rs      # Outbound webhook dispatcher
@@ -214,7 +217,9 @@ amigo-krake/
 │   ├── Cargo.toml
 │   ├── tauri.conf.json
 │   └── src/
-│       └── main.rs
+│       ├── main.rs
+│       ├── app.rs               # Window, tray, single instance, deep links
+│       └── updater.rs           # tauri-plugin-updater behind DesktopUpdater
 ├── plugin-sdk/                   # @amigo-labs/krake-plugin-sdk — TS SDK for plugin authors
 │   ├── package.json
 │   ├── tsconfig.json

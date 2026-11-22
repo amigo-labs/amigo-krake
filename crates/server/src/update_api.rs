@@ -12,6 +12,63 @@ use krake_core::updater::{self, CoreUpdateStatus};
 
 use crate::api::AppState;
 
+/// The desktop app's update choice (`docs/specs/desktop-app.md`, AC-25).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum UpdateMode {
+    /// Install verified updates by themselves (the default).
+    Auto,
+    /// Announce each new version once; install on request.
+    Notify,
+    /// No background checks.
+    Off,
+}
+
+/// Update-choice state, answered without network access (AC-34).
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct DesktopModeState {
+    pub update_mode: UpdateMode,
+    pub update_mode_chosen: bool,
+    pub question_pending: bool,
+    pub can_self_update: bool,
+    pub pending_restart: Option<String>,
+    pub announcement: Option<String>,
+    /// `false` after a failed write of `desktop.json` (only in PUT answers).
+    pub saved: bool,
+}
+
+/// A newer desktop version found by a check.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DesktopUpdateInfo {
+    pub version: String,
+    pub notes: Option<String>,
+}
+
+/// The desktop app's updater. Implemented by the Tauri app on top of
+/// tauri-plugin-updater; the server only calls it (AC-17, AC-31, AC-34,
+/// AC-35).
+#[async_trait::async_trait]
+pub trait DesktopUpdater: Send + Sync {
+    /// Whether this copy may update itself (AC-16).
+    fn can_self_update(&self) -> bool;
+    /// Version downloaded and verified in this session, if any.
+    fn pending_restart(&self) -> Option<String>;
+    /// Check only; `None` when up to date.
+    async fn check(&self) -> Result<Option<DesktopUpdateInfo>, String>;
+    /// Check, download, verify and install / hold (AC-14, AC-15); returns
+    /// the version.
+    async fn apply(&self) -> Result<String, String>;
+    /// Update-choice state without network access (AC-34).
+    fn mode_state(&self) -> DesktopModeState;
+    /// Make a choice effective for this run and store it (AC-31).
+    fn set_mode(&self, mode: UpdateMode) -> DesktopModeState;
+    /// Record a close of the first-start question without a choice (AC-26).
+    fn dismiss_question(&self);
+    /// Mark `version` as announced; `Err` if it is not the pending one
+    /// (AC-35).
+    fn acknowledge(&self, version: &str) -> Result<(), String>;
+}
+
 pub fn update_router(state: AppState) -> Router {
     Router::new()
         .route("/api/v1/updates/check", get(check_updates))

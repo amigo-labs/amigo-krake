@@ -569,18 +569,18 @@ pub enum UpdateMode {
 
 | AC    | Test | Status | Commit |
 | ----- | ---- | ------ | ------ |
-| AC-1 |      | open   |        |
-| AC-2 |      | open   |        |
-| AC-3 |      | open   |        |
-| AC-4 |      | open   |        |
-| AC-5 |      | open   |        |
-| AC-6 |      | open   |        |
-| AC-7 |      | open   |        |
-| AC-8 |      | open   |        |
-| AC-9 |      | open   |        |
-| AC-10 |      | open   |        |
-| AC-11 |      | open   |        |
-| AC-12 |      | open   |        |
+| AC-1 | `ac1_ac5_api_needs_a_credential_and_the_web_ui_is_served`, `ac1_dropping_the_handle_keeps_serving_and_shutdown_stops`, `ac1_the_server_binary_serves_the_same_stack` (crates/server/tests/desktop_tests.rs) | built |  |
+| AC-2 | `desktop::paths::tests::ac2_stored_port_is_reused_and_a_taken_one_is_replaced` (crates/server/src/desktop/paths.rs); tauri/src/app.rs opens the window at the bound port | built |  |
+| AC-3 | `ac3_the_launch_token_signs_in_once`, `ac3_the_session_belongs_to_the_desktop_principal`, `ac3_without_desktop_mode_the_route_does_not_exist` (crates/server/tests/desktop_tests.rs) | built |  |
+| AC-4 | `ac4_desktop_mode_needs_no_setup` (crates/server/tests/desktop_tests.rs) | built |  |
+| AC-5 | `ac1_ac5_api_needs_a_credential_and_the_web_ui_is_served` (crates/server/tests/desktop_tests.rs) | built |  |
+| AC-6 | `desktop::paths::tests::ac6_every_file_lives_under_app_data`, `ac6_first_start_downloads_go_to_the_user_downloads_folder`, `ac6_relative_folders_never_point_at_the_working_directory` (crates/server/src/desktop/paths.rs) | built |  |
+| AC-7 | `ac7_the_plugin_host_is_bundled_as_a_sidecar` (crates/server/tests/desktop_conf_tests.rs); resolving a plugin URL in an installed release build: manual (first release) | built |  |
+| AC-8 | `embedded::serve` starts Click'n'Load only with `start_clicknload`; tauri/src/app.rs has no listener of its own (code review) | built |  |
+| AC-9 | `ac9_tray_pauses_and_resumes_every_download` (crates/server/tests/desktop_tests.rs); hide on close, tray menu: manual (first release) | built |  |
+| AC-10 | tauri-plugin-single-instance registered first in tauri/src/app.rs; focus and hand-over: manual (first release) | built |  |
+| AC-11 | `desktop::links::tests::ac11_*` (crates/server/src/desktop/links.rs), `ac10_ac11_deep_link_schemes_are_registered` (crates/server/tests/desktop_conf_tests.rs) | built |  |
+| AC-12 | `desktop::links::tests::ac12_magnet_links_are_declined` (crates/server/src/desktop/links.rs); the notification: manual (first release) | built |  |
 | AC-13 |      | open   |        |
 | AC-14 |      | open   |        |
 | AC-15 |      | open   |        |
@@ -642,3 +642,22 @@ pub enum UpdateMode {
   Tauri IPC and showing the announcement must not mark it; a waiting apply
   still installs after a shared check, because a check alone cannot satisfy
   an apply. Two more desktop-only routes, listed for review.
+- 2026-11-22 (build, P1/P2): the desktop logic that needs no Tauri —
+  `desktop.json`, paths, the listener, deep links, the tray actions and
+  (P3) the update controller — lives in `crates/server/src/desktop/`
+  instead of `tauri/src/state.rs` / `updater.rs`, because the workspace
+  test gate excludes `krake-desktop` (its `tauri` feature needs GTK and
+  WebKit); `tauri/src/` keeps only the Tauri glue. The Tauri code is
+  compiled by a new CI job (`desktop`).
+- 2026-11-22 (build): `ServerHandle` also carries the server `task`, so the
+  binary can wait on it; dropping the handle does not stop the server.
+- 2026-11-22 (build): in desktop mode the desktop session sees the events of
+  every download, also those Click'n'Load or the watch folder add without an
+  owner, because it is the app's only user. A plain server keeps scoping
+  sessions to their own downloads.
+- 2026-11-22 (build): an unknown `/api/...` path answers 404 instead of the
+  web UI's `index.html`, so desktop-only routes are absent on a plain
+  server (AC-3, AC-31, AC-34, AC-35).
+- 2026-11-22 (build): `tauri-plugin-shell` and the `protocol-asset` feature
+  are dropped — unused once the window loads the server's origin.
+

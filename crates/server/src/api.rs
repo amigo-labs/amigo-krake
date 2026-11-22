@@ -39,6 +39,9 @@ pub struct AppState {
     /// Bumped after every config change; open WebSockets let in without a
     /// login check themselves again (AC-08).
     pub config_epoch: Arc<tokio::sync::watch::Sender<u64>>,
+    /// The desktop app's updater; `Some` only when the server runs embedded
+    /// in the desktop app (`docs/specs/desktop-app.md`).
+    pub desktop_updater: Option<Arc<dyn crate::update_api::DesktopUpdater>>,
 }
 
 impl AppState {

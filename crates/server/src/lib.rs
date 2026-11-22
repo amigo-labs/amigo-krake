@@ -5,6 +5,9 @@ pub mod api;
 pub mod auth;
 pub mod background;
 pub mod clicknload;
+pub mod desktop;
+pub mod desktop_session;
+pub mod embedded;
 pub mod feedback;
 pub mod local_auth;
 pub mod login;
@@ -116,6 +119,7 @@ fn build_test_state_full(
         bind_is_loopback: config.server.is_bind_loopback(),
         config_lock: Arc::new(tokio::sync::Mutex::new(())),
         config_epoch: Arc::new(tokio::sync::watch::channel(0).0),
+        desktop_updater: None,
     }
 }
 

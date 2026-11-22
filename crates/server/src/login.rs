@@ -32,11 +32,11 @@ use crate::password;
 const LOGIN_RL_MAX: usize = 10;
 const LOGIN_RL_WINDOW: Duration = Duration::from_secs(60);
 
-type RateLimiter = Arc<Mutex<HashMap<String, VecDeque<Instant>>>>;
+pub(crate) type RateLimiter = Arc<Mutex<HashMap<String, VecDeque<Instant>>>>;
 
 /// Check-and-record a login attempt, returning `false` when the per-IP limit
 /// is exceeded for the current window.
-async fn rl_allow(rl: &RateLimiter, ip: &str) -> bool {
+pub(crate) async fn rl_allow(rl: &RateLimiter, ip: &str) -> bool {
     let now = Instant::now();
     let mut map = rl.lock().await;
     // Opportunistically drop fully-stale entries so the map can't grow without
