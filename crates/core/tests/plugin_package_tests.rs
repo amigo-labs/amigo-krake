@@ -552,16 +552,16 @@ async fn ac08_an_empty_package_or_nothing_queueable_fails_the_add() {
     let empty = "https://album.test/a/empty";
     let all_broken = "https://album.test/a/broken";
     let mut resolver = FakeResolver {
-        claims: vec![("https://album.test/".into(), "album".into())],
+        claims: vec![("https://album.test/".into(), "pkg-resolver".into())],
         ..Default::default()
     };
     resolver
         .packages
-        .insert(empty.into(), Some(package("album", "Empty", vec![])));
+        .insert(empty.into(), Some(package("pkg-resolver", "Empty", vec![])));
     resolver.packages.insert(
         all_broken.into(),
         Some(package(
-            "album",
+            "pkg-resolver",
             "Broken",
             vec![entry("https://album.test/f/x", None, None)],
         )),
@@ -581,7 +581,10 @@ async fn ac08_an_empty_package_or_nothing_queueable_fails_the_add() {
             .add_download_all(url, None, None, 0, None)
             .await
             .expect_err("add must fail");
-        assert!(err.to_string().contains("album"), "{err}");
+        assert!(
+            err.to_string().contains("plugin 'pkg-resolver'"),
+            "the error must name the plugin: {err}"
+        );
     }
     assert!(coord.storage().list_downloads().await.unwrap().is_empty());
 }

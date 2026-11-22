@@ -93,6 +93,7 @@ pub struct ResolvedPackage {
     pub resolver: String,
     /// Package name, e.g. the folder or album title.
     pub name: String,
+    /// The files, in the order they are queued.
     pub downloads: Vec<ResolvedDownload>,
 }
 

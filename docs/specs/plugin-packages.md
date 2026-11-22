@@ -192,7 +192,7 @@ Terms used below:
 | AC-02 | `ac01_ac02_every_entry_is_queued_in_order_inside_a_package_folder`, `ac02_one_entry_gets_no_folder_and_unsafe_names_stay_inside`, `ac02_category_folder_holds_the_package_folder` (crates/core/tests/plugin_package_tests.rs) | built |  |
 | AC-03 | `ac03_ac04_ac05_entry_headers_reach_every_attempt_and_never_the_history`, `ac03_headers_survive_a_restart` (crates/core/tests/plugin_package_tests.rs), `tests::ac03_reserved_headers_are_dropped` (crates/core/src/protocol/mod.rs) | built |  |
 | AC-04 | `tests::ac04_cookies_join_an_existing_cookie_header` (crates/core/src/protocol/mod.rs), `resolver::tests::ac03_ac04_plugin_headers_and_cookies_become_transfer_headers` (crates/server/src/resolver.rs) | built |  |
-| AC-05 | `ac03_ac04_ac05_entry_headers_reach_every_attempt_and_never_the_history` (crates/core/tests/plugin_package_tests.rs); REST download/history responses carry no metadata | built |  |
+| AC-05 | `ac03_ac04_ac05_entry_headers_reach_every_attempt_and_never_the_history` (crates/core/tests/plugin_package_tests.rs), `ac05_entry_headers_never_show_in_download_or_history_responses` (crates/server/tests/api_tests.rs) | built |  |
 | AC-06 | `ac06_ac07_entries_the_same_plugin_claims_are_resolved_one_level` (crates/core/tests/plugin_package_tests.rs) | built |  |
 | AC-07 | `ac06_ac07_entries_the_same_plugin_claims_are_resolved_one_level` (crates/core/tests/plugin_package_tests.rs) | built |  |
 | AC-08 | `ac08_an_empty_package_or_nothing_queueable_fails_the_add` (crates/core/tests/plugin_package_tests.rs) | built |  |
