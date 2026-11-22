@@ -575,7 +575,7 @@ pub enum UpdateMode {
 | AC-4 | `ac4_desktop_mode_needs_no_setup` (crates/server/tests/desktop_tests.rs) | built |  |
 | AC-5 | `ac1_ac5_api_needs_a_credential_and_the_web_ui_is_served` (crates/server/tests/desktop_tests.rs) | built |  |
 | AC-6 | `desktop::paths::tests::ac6_every_file_lives_under_app_data`, `ac6_first_start_downloads_go_to_the_user_downloads_folder`, `ac6_relative_folders_never_point_at_the_working_directory` (crates/server/src/desktop/paths.rs), `ac6_the_registry_cache_lives_with_the_plugins` (crates/server/tests/desktop_tests.rs) | built |  |
-| AC-7 | `ac7_the_plugin_host_is_bundled_as_a_sidecar` (crates/server/tests/desktop_conf_tests.rs); resolving a plugin URL in an installed release build: manual (first release) | built |  |
+| AC-7 | `ac7_the_plugin_host_is_bundled_as_a_sidecar` (crates/server/tests/desktop_conf_tests.rs); release run 45057017014 (v0.1.12): all four installer jobs green, `krake-linux-x64.deb` ships `usr/bin/krake-plugin-host` (9.3 MB); resolving a plugin URL in an installed release build: manual | built |  |
 | AC-8 | `ac8_clicknload_starts_once_through_serve` (crates/server/tests/desktop_tests.rs) | built |  |
 | AC-9 | `ac9_tray_pauses_and_resumes_every_download` (crates/server/tests/desktop_tests.rs); hide on close, tray menu: manual (first release) | built |  |
 | AC-10 | tauri-plugin-single-instance registered first in tauri/src/app.rs; focus and hand-over: manual (first release) | built |  |
@@ -587,12 +587,12 @@ pub enum UpdateMode {
 | AC-16 | `ac16_self_update_only_in_release_and_never_from_deb_or_rpm` (crates/server/src/desktop/update.rs) | built |  |
 | AC-17 | `ac17_check_reports_the_desktop_update_and_its_state`, `ac17_apply_installs_through_the_hook` (crates/server/tests/desktop_tests.rs) | built |  |
 | AC-18 | "AC-18 …" tests (web-ui/test/desktopUpdates.test.ts, web-ui/test/updatePrompt.dom.test.ts) | built |  |
-| AC-19 | `ac19_the_bundle_creates_updater_artifacts` (crates/server/tests/desktop_release_conf_tests.rs); `.sig` per artifact: release workflow step "Stable asset names" (CI: release builds) | built |  |
+| AC-19 | `ac19_the_bundle_creates_updater_artifacts`, `ac22_the_bundler_is_active` (crates/server/tests/desktop_release_conf_tests.rs); release run 45057017014 (v0.1.12): `.sig` assets for `krake-windows-x64-setup.exe`, `krake-windows-x64.msi`, `krake-macos-x64.app.tar.gz`, `krake-macos-arm64.app.tar.gz`, `krake-linux-x64.AppImage`; `latest.json` lists all seven platforms with signatures | built |  |
 | AC-20 | CI job `updater-release-scripts` (scripts/updater-latest-json.mjs on scripts/fixtures/updater, missing / empty signature fails) | built |  |
 | AC-21 | CI job `updater-release-scripts` (scripts/updater-key-id-guard.mjs: own key passes, other key fails with file and both IDs, `UPDATER_SIGNING_KEY_ID` override) | built |  |
-| AC-22 | release-build.yml step "Stable asset names" (CI: release builds) | built |  |
+| AC-22 | release-build.yml step "Stable asset names" (CI: release builds); release run 45057017014 (v0.1.12): assets `krake-windows-x64-setup.exe`, `krake-windows-x64.msi`, `krake-macos-x64.dmg`, `krake-macos-arm64.dmg`, `krake-macos-x64.app.tar.gz`, `krake-macos-arm64.app.tar.gz`, `krake-linux-x64.AppImage`, `krake-linux-x64.deb` | built |  |
 | AC-23 | docs/site/project.yml `downloads` with `asset:` stable names; links resolve after the release: manual | built |  |
-| AC-24 | release-build.yml installer job, first step fails naming each missing secret (CI: release builds) | built |  |
+| AC-24 | release-build.yml installer job, first step "Require the updater signing key" (CI: release builds); release run 45057017014 (v0.1.12): step green with both secrets set; the failure branch has not run in CI | built |  |
 | AC-25 | `ac25_ac34_a_fresh_copy_asks_and_answers_without_the_network` (crates/server/src/desktop/update.rs); "AC-25 …" tests (web-ui/test/desktopUpdates.test.ts, web-ui/test/updatePrompt.dom.test.ts) | built |  |
 | AC-26 | `ac26_confirm_stores_and_closing_stores_nothing`, `ac26_ac31_a_failed_write_still_applies_for_this_run` (crates/server/src/desktop/update.rs); "AC-26 …" tests (web-ui/test/desktopUpdates.test.ts, web-ui/test/updatePrompt.dom.test.ts) | built |  |
 | AC-27 | `ac27_no_background_check_while_the_question_is_open` (crates/server/src/desktop/update.rs) | built |  |
@@ -672,4 +672,7 @@ pub enum UpdateMode {
   launch's links are handled only through the deep-link event (the
   single-instance plugin's `deep-link` feature emits it), not also from its
   `argv`, so a link is queued and a magnet notice shown once.
-
+- 2026-11-22: Release 0.1.11 produced no installers: `bundle.active` had been
+  removed from `tauri.conf.json` as a supposed Tauri 1 leftover, and Tauri 2
+  defaults it to false. Fixed in #140 (`ac22_the_bundler_is_active`); 0.1.12
+  is the first release with desktop assets.
