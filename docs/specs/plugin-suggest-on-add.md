@@ -83,16 +83,16 @@ neither endpoint.
   host API and app version; an incompatible plugin is left out.
 - [ ] AC-06 (always): A link appears in the `urls` of at most one
   suggestion. Among several candidates (after AC-02 to AC-05) the installed
-  disabled plugin wins; among registry plugins, the one listed first in the
-  registry index.
+  disabled plugin wins (among several, the one first in the server's plugin
+  list); among registry plugins, the one listed first in the registry index.
 - [ ] AC-07 (error): If the registry is unreachable or fails signature
   verification, then the answer is `200` and holds no `action: "install"`
   suggestion; `action: "enable"` suggestions, which need no registry, are
   still given.
 - [ ] AC-08 (error): If `urls` holds more than 1 000 entries (counted as
-  sent, duplicates and non-links included), is not a list of strings, or the
-  body has both `url` and `urls`, then the server answers with a `4xx` status
-  and no suggestions. Entries that are not `http`/`https` URLs are ignored,
+  sent, duplicates and non-links included), is not a list of strings
+  (`null` included), or the body has both `url` and `urls` or neither, then
+  the server answers `400` or `422` and no suggestions. Entries that are not `http`/`https` URLs are ignored,
   because plugin URL patterns only match web links; an empty list answers
   `200` with no suggestions.
 - [ ] AC-09 (always): `POST /api/v1/plugins/suggest` with `{"url": "..."}`
@@ -111,7 +111,7 @@ neither endpoint.
   user clicks Enable, the installed plugin is enabled (no domain approval:
   its domains were approved at its install), with the same toast and refresh.
 - [ ] AC-12 (error): If installing or enabling fails, then an error toast
-  shows the server's message, the card stays with its button usable again,
+  with a translated title shows the server's (English) message, the card stays with its button usable again,
   and the URL field keeps its links.
 - [ ] AC-13 (state): While a lookup runs, and after it failed, the Add
   button queues the links as without this feature, and a failed lookup shows
@@ -121,7 +121,7 @@ neither endpoint.
   later is dropped, and a field without links shows no cards.
 - [ ] AC-15 (always): Every new text of this feature — the card line with
   the link count, the domain line with "any public host" and "no hosts",
-  "show all", Install, Enable and the success toasts — exists in English and
+  "show all", Install, Enable, the success toasts and the error toast titles — exists in English and
   German.
 
 ## Technical notes
@@ -146,7 +146,8 @@ Card sketch (above the Add button, inside the URL tab):
 ```
 ┌──────────────────────────────────────────────┐
 │ Bunkr handles 3 of these links                │
-│ May connect to: bunkr.cr, bunkr.su, … (+44)   │
+│ May connect to: bunkr.ac, bunkr.ci, bunkr.cr  │
+│ [show all 47]                                 │
 │                                   [Install]   │
 └──────────────────────────────────────────────┘
 ```
@@ -164,9 +165,10 @@ Card sketch (above the Add button, inside the URL tab):
 | User edits the field while a lookup runs | The older answer is dropped (AC-14) |
 | User installs, then the field is cleared | Nothing more to show; the plugin stays installed |
 | Plugin is unscoped (`domains: null`) | Card says "any public host" |
-| 5 000 links pasted | Server answers 4xx; panel shows no card and no error (AC-08, AC-13) |
+| 5 000 links pasted | Server answers 400; panel shows no card and no error (AC-08, AC-13) |
 | The panel is closed while an install runs | The install completes on the server; its toast still appears |
-| Another client installs the plugin before the click | The install answers like any repeated install; the refresh drops the card |
+| Another client installs the plugin before the click | The install succeeds again (a reinstall of the same id) and the refresh drops the card (AC-11) |
+| The refresh after an install fails | The installed plugin's card is removed; other cards stay until the next lookup |
 | A link matches a disabled installed hoster and another registry hoster | One Enable card for the installed plugin (AC-06) |
 | User clicks Add before installing | Links are queued with the installed plugins (AC-13) |
 
