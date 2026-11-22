@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.1.11](https://github.com/amigo-labs/amigo-krake/compare/v0.1.10...v0.1.11) (2026-11-22)
+
+
+### Features
+
+* **core:** queue every entry of a plugin package with its headers and cookies (AC-01 to AC-09) ([d9406ab](https://github.com/amigo-labs/amigo-krake/commit/d9406ab9bb02e4b21389cfcb2030862800f92467))
+* gofile, bunkr and filester plugins; plugin packages; desktop app ([3ee7b0c](https://github.com/amigo-labs/amigo-krake/commit/3ee7b0c62867bb9ebd0062f43e33f4bdbfff26c5))
+* **plugins:** gofile, bunkr and filester hoster plugins (AC-10 to AC-16) ([b4e0d69](https://github.com/amigo-labs/amigo-krake/commit/b4e0d69ebdec388687d0c3417314408f017da366))
+* **server:** desktop update controller and update-choice routes (AC-13 to AC-17, AC-25 to AC-31, AC-34, AC-35) ([b0dfbcc](https://github.com/amigo-labs/amigo-krake/commit/b0dfbcce295b1380964413bd7392a15268469370))
+* **tauri:** embedded server, desktop session, tray, single instance and deep links (AC-1 to AC-12) ([fb47764](https://github.com/amigo-labs/amigo-krake/commit/fb477645b6ae97ad6bc82ff35d995198552f3852))
+* **tauri:** updater artifacts, passive Windows updates and silent-setup hook (AC-19, AC-32) ([dda7e41](https://github.com/amigo-labs/amigo-krake/commit/dda7e4127efd1e550f0867a3bc1564eaf4a7c595))
+* **web-ui:** desktop update question, announcement, banner and About (AC-18, AC-25 to AC-30, AC-33) ([96dcae3](https://github.com/amigo-labs/amigo-krake/commit/96dcae3ba85c0af36542543d9f6c6c51b9816af7))
+
+
+### Bug Fixes
+
+* **ci:** upload only the release's own artifacts ([5a59599](https://github.com/amigo-labs/amigo-krake/commit/5a5959985f22306d137e99b94721a3b53c4fee0e))
+* **server:** keep the registry index cache in the plugins folder (desktop-app AC-6) ([76a8946](https://github.com/amigo-labs/amigo-krake/commit/76a8946e91919e00d81681fbc312ad40785021cc))
+* **server:** mark the desktop session cookie Secure the way /login does ([f083a49](https://github.com/amigo-labs/amigo-krake/commit/f083a493e47c577e1c2ccbe10024e68dd620a543))
+* **server:** parse desktop update bodies with axum's Json extractor ([8ae7833](https://github.com/amigo-labs/amigo-krake/commit/8ae7833308fc22b9ec968f7cef60f1b6beae77e1))
+* **tauri:** guard deep-link URLs like the API and handle a second launch's link once (AC-6, AC-8, AC-11, AC-12) ([e0728a9](https://github.com/amigo-labs/amigo-krake/commit/e0728a93700b44fb8c4f118000237db44ad0f957))
+* url 2.5.9 (RUSTSEC-2026-0592), escape bunkr hosts fully, web UI-independent desktop tests ([21a1a84](https://github.com/amigo-labs/amigo-krake/commit/21a1a8477c671ed1803f026ba1be28ce83e5ae55))
+
 ## [0.1.10](https://github.com/amigo-labs/amigo-krake/compare/v0.1.9...v0.1.10) (2026-11-19)
 
 
