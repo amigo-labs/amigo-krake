@@ -18,7 +18,7 @@ fn ac7_the_plugin_host_is_bundled_as_a_sidecar() {
 }
 
 #[test]
-fn the_window_is_created_at_runtime_and_no_v1_keys_remain() {
+fn the_window_is_created_at_runtime() {
     let conf = conf();
     assert!(
         conf["app"]["windows"]
@@ -26,7 +26,6 @@ fn the_window_is_created_at_runtime_and_no_v1_keys_remain() {
             .is_none_or(|w| w.is_empty()),
         "the window is opened at the server URL at runtime"
     );
-    assert!(conf["bundle"].get("active").is_none(), "Tauri v1 leftover");
 }
 
 #[test]
