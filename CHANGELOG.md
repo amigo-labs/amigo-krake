@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.13](https://github.com/amigo-labs/amigo-krake/compare/v0.1.12...v0.1.13) (2026-11-22)
+
+
+### Bug Fixes
+
+* **web-ui:** no Update button where the server cannot update itself ([b1dcece](https://github.com/amigo-labs/amigo-krake/commit/b1dcece091d8c04196fdd1c1ac53c34e62a81d96))
+* **web-ui:** no Update button where the server cannot update itself ([2acf1ac](https://github.com/amigo-labs/amigo-krake/commit/2acf1acca7193c0be08cf42110fb4201e4960781))
+
 ## [0.1.12](https://github.com/amigo-labs/amigo-krake/compare/v0.1.11...v0.1.12) (2026-11-22)
 
 
