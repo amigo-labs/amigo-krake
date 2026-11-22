@@ -1,5 +1,5 @@
 ---
-status: todo
+status: implemented
 created: 2026-11-22
 size: M
 design: [AGENTS.md "Plugin-System" (Plugin-Interface, DownloadInfo), AGENTS.md "Core-Features" (Queue & Scheduler), docs/plugin-api.md (resolve, DownloadPackage), docs/architecture.md]
@@ -67,28 +67,28 @@ Terms used below:
 - **Transfer request** — every HTTP request Krake makes to download an
   entry's file (each chunk, each retry, each attempt after a restart).
 
-- [ ] AC-01 (event): When a plugin resolves an added URL to a package with
+- [x] AC-01 (event): When a plugin resolves an added URL to a package with
   several entries, then Krake queues one download per entry, in the order of
   the package, each with the entry's filename and size.
-- [ ] AC-02 (always): The downloads of a package with more than one entry are
+- [x] AC-02 (always): The downloads of a package with more than one entry are
   saved in a folder named after the package of the added URL, made safe by
   the rule Krake applies to file names (no path separators, no characters
   invalid on Windows, never `..`), inside the folder the download would
   otherwise go to (the download folder, or its category subfolder when the
   add names a category); a package with one entry is saved as before,
   without that folder, because a folder for one file adds nothing.
-- [ ] AC-03 (always): Krake sends the headers of an entry with every transfer
+- [x] AC-03 (always): Krake sends the headers of an entry with every transfer
   request of its download — the first attempt, an attempt after a failed one,
   and an attempt after Krake was restarted with the download still queued —
   except `Host`, `Content-Length`, `Range`, `Transfer-Encoding` and
   `Connection`, which Krake sets itself.
-- [ ] AC-04 (always): Krake sends the cookies of an entry as a `Cookie` header
+- [x] AC-04 (always): Krake sends the cookies of an entry as a `Cookie` header
   with every transfer request of its download; when the entry also sets a
   `Cookie` header, both are sent in that one header.
-- [ ] AC-05 (always): The headers and cookies of an entry appear neither in
+- [x] AC-05 (always): The headers and cookies of an entry appear neither in
   the REST responses for downloads or history, nor in WebSocket events, nor
   in the history entry the download leaves.
-- [ ] AC-06 (event): When an entry's URL differs from the added URL and the
+- [x] AC-06 (event): When an entry's URL differs from the added URL and the
   plugin Krake would pick for the entry's URL is the plugin that returned the
   entry, then Krake resolves the entry through that plugin and queues the
   entries that resolution returns, instead of the entry itself. Entries of
@@ -96,35 +96,35 @@ Terms used below:
   plugin would pick again: they are deeper than one level, not queued, and
   logged. (Another plugin claiming the entry, such as the generic HTTP
   plugin that matches every URL, does not trigger a second resolution.)
-- [ ] AC-07 (error): If resolving an entry (AC-06) fails, then that entry is
+- [x] AC-07 (error): If resolving an entry (AC-06) fails, then that entry is
   not queued, the failure is logged with the entry's URL, and the other
   entries are queued.
-- [ ] AC-08 (error): If a plugin returns a package without entries, or none
+- [x] AC-08 (error): If a plugin returns a package without entries, or none
   of its entries ends up queued or already queued (AC-07, AC-06 depth), then
   the add fails with an error that names the plugin, and nothing is queued.
-- [ ] AC-09 (always): `POST /api/v1/downloads` answers with the ids of the
+- [x] AC-09 (always): `POST /api/v1/downloads` answers with the ids of the
   downloads the add stands for, in package order, in `ids` — newly queued
   ones and, for an entry whose URL was already queued, the existing
   download's id — and the first of them in `id`, because existing clients
   read `id` and the first entry is the one they got before.
-- [ ] AC-10 (event): When a gofile.io folder link (`/d/<id>`) is added, then the
+- [x] AC-10 (event): When a gofile.io folder link (`/d/<id>`) is added, then the
   gofile plugin returns the folder's files as entries with their names and
   sizes, and its subfolders as folder links (AC-06); every file entry carries
   the guest account cookie the file server needs.
-- [ ] AC-11 (error): If gofile.io reports a folder as not found or as password
+- [x] AC-11 (error): If gofile.io reports a folder as not found or as password
   protected, then the gofile plugin fails with an error that says which.
-- [ ] AC-12 (event): When a bunkr album link (`/a/<id>`) is added, then the
+- [x] AC-12 (event): When a bunkr album link (`/a/<id>`) is added, then the
   bunkr plugin returns one entry per file of the album, each a bunkr file
   link (AC-06).
-- [ ] AC-13 (event): When a bunkr file link (`/f/`, `/v/`, `/i/` or `/d/`) is
+- [x] AC-13 (event): When a bunkr file link (`/f/`, `/v/`, `/i/` or `/d/`) is
   added, then the bunkr plugin returns the file's direct URL (decrypted when
   bunkr sends it encrypted) with the file's name and a `Referer` header.
-- [ ] AC-14 (event): When a filester.me file link (`/d/<slug>`) is added, then
+- [x] AC-14 (event): When a filester.me file link (`/d/<slug>`) is added, then
   the filester plugin returns the file's download URL with the file's name.
-- [ ] AC-15 (event): When a filester.me folder link (`/f/<slug>`) is added, then
+- [x] AC-15 (event): When a filester.me folder link (`/f/<slug>`) is added, then
   the filester plugin returns one file link per file across the folder's
   pages (AC-06).
-- [ ] AC-16 (always): Every request the three plugins' `resolve` makes in
+- [x] AC-16 (always): Every request the three plugins' `resolve` makes in
   their tests goes to a host in that plugin's `permissions.domains`, and each
   plugin's `urlPattern` matches its own link forms (gofile `/d/`; bunkr
   `/a/`, `/f/`, `/v/`, `/i/`, `/d/` on bunkr domains; filester `/d/`, `/f/`)
@@ -188,22 +188,31 @@ Terms used below:
 
 | AC    | Test | Status | Commit |
 | ----- | ---- | ------ | ------ |
-| AC-01 | `ac01_ac02_every_entry_is_queued_in_order_inside_a_package_folder` (crates/core/tests/plugin_package_tests.rs) | built |  |
-| AC-02 | `ac01_ac02_every_entry_is_queued_in_order_inside_a_package_folder`, `ac02_one_entry_gets_no_folder_and_unsafe_names_stay_inside`, `ac02_category_folder_holds_the_package_folder` (crates/core/tests/plugin_package_tests.rs) | built |  |
-| AC-03 | `ac03_ac04_ac05_entry_headers_reach_every_attempt_and_never_the_history`, `ac03_headers_survive_a_restart` (crates/core/tests/plugin_package_tests.rs), `tests::ac03_reserved_headers_are_dropped` (crates/core/src/protocol/mod.rs) | built |  |
-| AC-04 | `tests::ac04_cookies_join_an_existing_cookie_header` (crates/core/src/protocol/mod.rs), `resolver::tests::ac03_ac04_plugin_headers_and_cookies_become_transfer_headers` (crates/server/src/resolver.rs) | built |  |
-| AC-05 | `ac03_ac04_ac05_entry_headers_reach_every_attempt_and_never_the_history` (crates/core/tests/plugin_package_tests.rs), `ac05_entry_headers_never_show_in_download_or_history_responses` (crates/server/tests/api_tests.rs) | built |  |
-| AC-06 | `ac06_ac07_entries_the_same_plugin_claims_are_resolved_one_level` (crates/core/tests/plugin_package_tests.rs) | built |  |
-| AC-07 | `ac06_ac07_entries_the_same_plugin_claims_are_resolved_one_level` (crates/core/tests/plugin_package_tests.rs) | built |  |
-| AC-08 | `ac08_an_empty_package_or_nothing_queueable_fails_the_add` (crates/core/tests/plugin_package_tests.rs) | built |  |
-| AC-09 | `ac09_already_queued_entries_report_the_existing_id` (crates/core/tests/plugin_package_tests.rs), `ac09_add_answers_every_id_of_a_package_in_order` (crates/server/tests/api_tests.rs) | built |  |
-| AC-10 | `test_gofile_plugin_spec_passes` (crates/plugin-runtime/tests/spec_runner.rs) running plugins/hosters/gofile/plugin.spec.ts ("AC-10: …" tests) | built |  |
-| AC-11 | `test_gofile_plugin_spec_passes` (crates/plugin-runtime/tests/spec_runner.rs) ("AC-11: …" tests) | built |  |
-| AC-12 | `test_bunkr_plugin_spec_passes` (crates/plugin-runtime/tests/spec_runner.rs) running plugins/hosters/bunkr/plugin.spec.ts ("AC-12: …") | built |  |
-| AC-13 | `test_bunkr_plugin_spec_passes` (crates/plugin-runtime/tests/spec_runner.rs) ("AC-13: …" tests, encrypted and plain answers) | built |  |
-| AC-14 | `test_filester_plugin_spec_passes` (crates/plugin-runtime/tests/spec_runner.rs) running plugins/hosters/filester/plugin.spec.ts ("AC-14: …") | built |  |
-| AC-15 | `test_filester_plugin_spec_passes` (crates/plugin-runtime/tests/spec_runner.rs) ("AC-15: …") | built |  |
-| AC-16 | `test_gofile_plugin_spec_passes`, `test_bunkr_plugin_spec_passes`, `test_filester_plugin_spec_passes` (crates/plugin-runtime/tests/spec_runner.rs) ("AC-16: …" pattern tests and the host check in every resolve test) | built |  |
+| AC-01 | `ac01_ac02_every_entry_is_queued_in_order_inside_a_package_folder` (crates/core/tests/plugin_package_tests.rs) | verified | d9406ab |
+| AC-02 | `ac01_ac02_every_entry_is_queued_in_order_inside_a_package_folder`, `ac02_one_entry_gets_no_folder_and_unsafe_names_stay_inside`, `ac02_category_folder_holds_the_package_folder` (crates/core/tests/plugin_package_tests.rs) | verified | d9406ab |
+| AC-03 | `ac03_ac04_ac05_entry_headers_reach_every_attempt_and_never_the_history`, `ac03_headers_survive_a_restart` (crates/core/tests/plugin_package_tests.rs), `tests::ac03_reserved_headers_are_dropped` (crates/core/src/protocol/mod.rs) | verified | d9406ab |
+| AC-04 | `tests::ac04_cookies_join_an_existing_cookie_header` (crates/core/src/protocol/mod.rs), `resolver::tests::ac03_ac04_plugin_headers_and_cookies_become_transfer_headers` (crates/server/src/resolver.rs) | verified | d9406ab |
+| AC-05 | `ac03_ac04_ac05_entry_headers_reach_every_attempt_and_never_the_history` (crates/core/tests/plugin_package_tests.rs), `ac05_entry_headers_never_show_in_download_or_history_responses` (crates/server/tests/api_tests.rs) | verified | d9406ab |
+| AC-06 | `ac06_ac07_entries_the_same_plugin_claims_are_resolved_one_level` (crates/core/tests/plugin_package_tests.rs) | verified | d9406ab |
+| AC-07 | `ac06_ac07_entries_the_same_plugin_claims_are_resolved_one_level` (crates/core/tests/plugin_package_tests.rs) | verified | d9406ab |
+| AC-08 | `ac08_an_empty_package_or_nothing_queueable_fails_the_add` (crates/core/tests/plugin_package_tests.rs) | verified | d9406ab |
+| AC-09 | `ac09_already_queued_entries_report_the_existing_id` (crates/core/tests/plugin_package_tests.rs), `ac09_add_answers_every_id_of_a_package_in_order` (crates/server/tests/api_tests.rs) | verified | d9406ab |
+| AC-10 | `test_gofile_plugin_spec_passes` (crates/plugin-runtime/tests/spec_runner.rs) running plugins/hosters/gofile/plugin.spec.ts ("AC-10: …" tests) | verified | b4e0d69 |
+| AC-11 | `test_gofile_plugin_spec_passes` (crates/plugin-runtime/tests/spec_runner.rs) ("AC-11: …" tests) | verified | b4e0d69 |
+| AC-12 | `test_bunkr_plugin_spec_passes` (crates/plugin-runtime/tests/spec_runner.rs) running plugins/hosters/bunkr/plugin.spec.ts ("AC-12: …") | verified | b4e0d69 |
+| AC-13 | `test_bunkr_plugin_spec_passes` (crates/plugin-runtime/tests/spec_runner.rs) ("AC-13: …" tests, encrypted and plain answers) | verified | b4e0d69 |
+| AC-14 | `test_filester_plugin_spec_passes` (crates/plugin-runtime/tests/spec_runner.rs) running plugins/hosters/filester/plugin.spec.ts ("AC-14: …") | verified | b4e0d69 |
+| AC-15 | `test_filester_plugin_spec_passes` (crates/plugin-runtime/tests/spec_runner.rs) ("AC-15: …") | verified | b4e0d69 |
+| AC-16 | `test_gofile_plugin_spec_passes`, `test_bunkr_plugin_spec_passes`, `test_filester_plugin_spec_passes` (crates/plugin-runtime/tests/spec_runner.rs) ("AC-16: …" pattern tests and the host check in every resolve test) | verified | b4e0d69 |
+
+## Summary
+
+> Completed: 2026-11-22
+
+- Krake queues every entry of a resolved plugin package in package order; a package of more than one entry goes into a folder named after the package, made safe (fallback: the plugin id), inside the download or category folder.
+- Entry headers and cookies are merged into one header set, stored in the download's metadata (`request_headers`), and sent on every transfer request, including after retries and restarts. The headers Krake sets itself are dropped. They never show in REST responses, WebSocket events or history.
+- An entry that the same plugin claims is resolved one level deeper; failed and deeper entries are skipped and logged. An add that queues nothing fails and names the plugin. `POST /api/v1/downloads` answers `ids` in package order next to `id`.
+- New hoster plugins for gofile.io (folders, guest account cookie), bunkr (albums, files with the XOR-decrypted URL and a Referer) and filester.me (files, paged folders), each tested offline through `spec_runner`.
 
 ## Decisions
 
