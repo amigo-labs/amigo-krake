@@ -157,7 +157,7 @@ Depends on: `plugin-wasm-guest` (`status: implemented`).
 | AC-06 | `second_load_comes_from_bytecode_cache_and_corruption_falls_back` (crates/plugin-runtime/tests/hardening_tests.rs), `bytecode_of_another_guest_build_is_never_read` (crates/plugin-runtime/tests/wasm_sandbox_tests.rs), `engine_version_is_part_of_the_key` (crates/plugin-runtime/src/bytecode_cache.rs) | built |        |
 | AC-07 | `plugin_load_and_resolve_baseline` (crates/plugin-runtime/tests/perf_baseline.rs, ignored, run by hand, asserts the budgets in release): cold 21 ms, warm 16 ms, resolve 1.9 ms (medians, three runs, release, 4 vCPU container, 2026-11-11) | built |        |
 | AC-08 | `the_plugin_host_needs_only_its_own_executable` (crates/plugin-runtime/tests/wasm_sandbox_tests.rs); archives and image: `.github/workflows/release-build.yml` and `docker/Dockerfile` ship the same three binaries as before | built |        |
-| AC-09 | CI: release builds — the next run of `.github/workflows/release-build.yml` | open |        |
+| AC-09 | CI: release builds — run 44509230843 of `release-build.yml` (via release-please, commit 2138301, 2026-11-19): the five CLI/server jobs (Linux x86_64 and aarch64, macOS x86_64 and aarch64, Windows x86_64) built and packaged `krake-plugin-host` with the embedded guest, green; the later upload job failed on an artifact download (GitHub transfer error, not a build) | built |        |
 | AC-10 | manual: daniel-rck checked the sandbox documentation (`docs/plugin-api.md` (Sandbox Limits, bytecode), `docs/architecture.md` (Plugin isolation), AGENTS.md (Sandboxing, Tech Stack), README, `docs/site/project.yml`, `plugin-sandbox-hardening.md`, `plugin-runtime-wasm-portability.md`), 2026-11-11 | built |        |
 
 ## Decisions
