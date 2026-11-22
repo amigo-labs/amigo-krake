@@ -1,5 +1,5 @@
 ---
-status: todo
+status: implemented
 created: 2026-11-17
 size: L
 design: [AGENTS.md "Plugin Registry & Updates", AGENTS.md "Sandboxing", AGENTS.md Entscheidung 17, docs/plugin-api.md, docs/hosting.md "Plugin auto-updates"]
@@ -84,101 +84,101 @@ every published file plus the new ones. **Versions** are compared by SemVer 2.0 
 (pre-releases sort below their release). **Same source** means byte-identical
 files.
 
-- [ ] AC-01 (event): When the registry build runs over the repository, then it
+- [x] AC-01 (event): When the registry build runs over the repository, then it
   writes an `index.json` (`schema_version` 1) with exactly one entry per plugin,
   and none for `plugins/template` or `plugins/types`.
-- [ ] AC-02 (always): Each index entry's `id`, `name`, `version`, `description`,
+- [x] AC-02 (always): Each index entry's `id`, `name`, `version`, `description`,
   `author`, `url_pattern`, `api_version` and `permissions` equal the values the
   plugin's exported object declares (missing optional fields: empty string for
   `description`/`author`, `api_version` 1, no `permissions`), as checked against
   a fixture plugin whose values are fixed in the test; `tags` holds the plugin's
   `pluginType` (default `hoster`); `min_app_version` is `null`.
-- [ ] AC-03 (always): Each entry's `download_url` is
+- [x] AC-03 (always): Each entry's `download_url` is
   `<base URL>/plugins/<id>/<version>/plugin.<ext>` with `<ext>` the extension of
   the plugin's source file, the build writes that source byte-for-byte to the
   relative path `plugins/<id>/<version>/plugin.<ext>`, and the entry's `sha256`
   is the lowercase hex SHA-256 of those bytes.
-- [ ] AC-04 (error): If a plugin fails to transpile or load, declares an id that
+- [x] AC-04 (error): If a plugin fails to transpile or load, declares an id that
   `validate_plugin_id` rejects, has a version that is not
   SemVer, requires a host-API version this build cannot load, has a
   `urlPattern` that is not a valid regex, has a source that is not UTF-8 or is
   larger than the 2 MiB a client accepts, or shares its id with another plugin,
   then the build exits non-zero, names every failing plugin with its reason,
   and writes nothing to the output directory.
-- [ ] AC-05 (event): When the build is given a published registry, then every
+- [x] AC-05 (event): When the build is given a published registry, then every
   artifact listed in its `index.json` must exist with its `sha256` (a missing
   `index.json`, a missing or mismatching artifact fails the build); a plugin
   whose version is already published with a different source, or whose version
   is lower than its published version, makes the build fail naming the plugin;
   every previously published file is copied unchanged into the output. On any
   of these failures the build writes nothing to the output directory.
-- [ ] AC-06 (event): If no plugin is found, then the build exits non-zero and
+- [x] AC-06 (event): If no plugin is found, then the build exits non-zero and
   writes no `index.json`.
-- [ ] AC-07 (always): Running the build twice over the same input produces a
+- [x] AC-07 (always): Running the build twice over the same input produces a
   byte-identical `index.json`, and signing the same index twice produces the
   same signature.
-- [ ] AC-08 (event): When the index is signed with a seed whose public key
+- [x] AC-08 (event): When the index is signed with a seed whose public key
   equals the pinned key, then `index.json.sig` holds a signature that the
   server's registry client accepts with that key.
-- [ ] AC-09 (error): If the signing seed or the pinned public key is missing,
+- [x] AC-09 (error): If the signing seed or the pinned public key is missing,
   is not 64 hex characters, or the seed does not derive the pinned key, then signing exits non-zero and
   writes no signature.
-- [ ] AC-10 (event): When the publish step runs against a git repository whose
+- [x] AC-10 (event): When the publish step runs against a git repository whose
   `registry` branch is missing, then it creates it with one commit containing
   `index.json`, `index.json.sig` and every artifact; when it runs again after a
   plugin's version was raised, then it adds exactly one commit that adds the new
   artifact and replaces `index.json` and `index.json.sig`, keeping all earlier
   artifacts; when nothing in the output differs from the branch, then it adds no
   commit. (Tested against a local temporary repository.)
-- [ ] AC-11 (error): If the remote `registry` branch moved since the publish
+- [x] AC-11 (error): If the remote `registry` branch moved since the publish
   step read it (another run pushed first), then the step exits non-zero without
   overwriting the remote; run again, it builds on the new tip and succeeds.
   Before pushing, the step verifies the new `index.json.sig` against the pinned
   key, so `index.json` and a matching signature always arrive in the same
   commit. (Tested against a local temporary repository.)
-- [ ] AC-12 (event, CI: registry-publish): When the last push to `main` has
+- [x] AC-12 (event, CI: registry-publish): When the last push to `main` has
   been processed, then the published registry matches the plugins of that
   commit, even if pushes in between were skipped or superseded (each run
   publishes the full state of its commit, never a delta). Evidence: the
   workflow run for the merge of this feature is green and
   `<base URL>/index.json` lists the plugins of that commit.
-- [ ] AC-13 (error, CI: pr): If a pull request contains a plugin whose source
+- [x] AC-13 (error, CI: pr): If a pull request contains a plugin whose source
   differs from the published artifact of its published version and whose
   version is not higher than that, then the pull-request
   check fails and names the plugin; a pull request that changes no plugin
   passes, and so does one where the published registry does not exist yet.
-- [ ] AC-14 (always): A fresh config's `update.plugin_registry_url` is
+- [x] AC-14 (always): A fresh config's `update.plugin_registry_url` is
   `<default base URL>/index.json`, and so is the registry default used without a
   config.
-- [ ] AC-15 (event): When a config is loaded whose `plugin_registry_url` is the
+- [x] AC-15 (event): When a config is loaded whose `plugin_registry_url` is the
   old default `https://raw.githubusercontent.com/amigo-labs/amigo-downloader-plugins/main/index.json`,
   then Krake uses the new default URL from then on, and the next time the config
   is saved (for any reason) the file holds the new URL; loading alone does not
   write the file. Any other custom URL is kept unchanged.
-- [ ] AC-16 (always, CI: release): Release builds pin the update signing public
+- [x] AC-16 (always, CI: release): Release builds pin the update signing public
   key as the registry public key, and the release build fails when that key is
   missing.
-- [ ] AC-17 (event): When `POST /api/v1/plugins/suggest` is called, then the
+- [x] AC-17 (event): When `POST /api/v1/plugins/suggest` is called, then the
   server matches the URL against the registry it is configured with (URL and
   signature verification), not the built-in default; if that registry is
   unreachable or fails verification, the answer is "no plugin found", as for an
   unavailable registry today.
-- [ ] AC-18 (event): When `krake plugins search <query>` runs with a paired
+- [x] AC-18 (event): When `krake plugins search <query>` runs with a paired
   server, then it lists the server's available registry plugins whose id, name,
   description or tags contain the query (case-insensitive), each with id,
   version and whether it is installed; with no match it prints that nothing
   matched and exits 0.
-- [ ] AC-19 (event): When `krake plugins update [id]` runs with a paired server,
+- [x] AC-19 (event): When `krake plugins update [id]` runs with a paired server,
   then it updates that plugin, or every installed plugin with a newer version
   without an id, and prints each updated plugin with its old and new version;
   it reports every plugin it tried, and exits non-zero if any update failed.
   Updates skipped because access was not approved (AC-20) are listed but do not
   count as failures.
-- [ ] AC-20 (error): If an update widens a plugin's network access, then
+- [x] AC-20 (error): If an update widens a plugin's network access, then
   `krake plugins update` shows the added hosts and applies that update only
   after the user answers yes or `--yes` is passed; when stdin is not a terminal
   and `--yes` is missing, it skips that plugin and says so.
-- [ ] AC-21 (error): If no server is paired, the server cannot be reached, the
+- [x] AC-21 (error): If no server is paired, the server cannot be reached, the
   server answers that the registry is unavailable, or `update <id>` names a
   plugin that is not installed or has no newer version in the registry,
   then `krake plugins search` / `update` exit non-zero with a message naming
@@ -257,33 +257,43 @@ files.
 | The PR check can read branch `registry` from fork PRs | The repository is public and the check only reads git data, no secret or variable | A private repository would need a token |
 | Cloudflare deploys every push to `registry` within minutes | Git-connected Workers project (Workers Builds), as the user set it up | Delay only; no correctness impact |
 
+## Summary
+
+> Completed: 2026-11-22
+
+- `krake plugins registry build|sign|check|publish` (hidden): builds `index.json` and versioned artifacts from `plugins/` with the real plugin runtime, signs the index with the update key and pushes one commit per change to the branch `registry`.
+- GitHub Actions publish the registry on every relevant push to `main` (`registry-publish.yml`) and check plugin versions against it in every pull request (`ci.yml` job "Plugin registry check").
+- The Cloudflare Worker `amigo-krake` serves the branch at `https://krake-registry.amigo-labs.dev`, the new default `plugin_registry_url`; the dead old default is rewritten on load.
+- Release builds pin the update public key as the registry key; `/plugins/suggest` uses the configured, verified registry.
+- `krake plugins search` and `krake plugins update [id] [--yes]` work against the paired server, with approval for widened network access.
+
 ## Open questions
 
 ## Evidence
 
 | AC    | Test | Status | Commit |
 | ----- | ---- | ------ | ------ |
-| AC-01 | `ac01_one_entry_per_plugin_in_the_three_categories` (crates/plugin-runtime/tests/registry_build_tests.rs) | built |  |
-| AC-02 | `ac02_entry_fields_equal_the_declared_values` (crates/plugin-runtime/tests/registry_build_tests.rs) | built |  |
-| AC-03 | `ac03_download_url_path_and_sha256_match_the_written_artifact` (crates/plugin-runtime/tests/registry_build_tests.rs) | built |  |
-| AC-04 | `ac04_*` (9 tests) (crates/plugin-runtime/tests/registry_build_tests.rs) | built |  |
-| AC-05 | `ac05_*` (5 tests) (crates/plugin-runtime/tests/registry_build_tests.rs) | built |  |
-| AC-06 | `ac06_empty_plugin_tree_fails` (crates/plugin-runtime/tests/registry_build_tests.rs) | built |  |
-| AC-07 | `ac07_build_and_signature_are_deterministic` (crates/plugin-runtime/tests/registry_build_tests.rs) | built |  |
-| AC-08 | `ac08_signed_index_is_accepted_by_the_registry_client` (crates/plugin-runtime/tests/registry_build_tests.rs) | built |  |
-| AC-09 | `ac09_signing_refuses_bad_or_missing_key_material` (crates/plugin-runtime/tests/registry_build_tests.rs) | built |  |
-| AC-10 | `registry_cmd::tests::ac10_publish_creates_extends_and_skips_unchanged` (crates/cli/src/registry_cmd.rs) | built |  |
-| AC-11 | `registry_cmd::tests::ac11_moved_branch_fails_without_overwriting_then_rerun_succeeds`, `ac11_unverifiable_signature_is_never_committed` (crates/cli/src/registry_cmd.rs) | built |  |
-| AC-12 | `.github/workflows/registry-publish.yml` job `publish` (green run after merge + live `index.json`) | built |  |
-| AC-13 | `.github/workflows/ci.yml` job `registry-check` (`krake plugins registry check`); logic covered by `ac05_*` in crates/plugin-runtime/tests/registry_build_tests.rs and `ac10_*` in crates/cli/src/registry_cmd.rs | built |  |
-| AC-14 | `config::tests::ac14_default_registry_url_is_the_published_registry` (crates/core/src/config.rs), `registry::tests::ac14_default_index_url_is_the_published_registry` (crates/plugin-runtime/src/registry.rs), `ac14_server_and_runtime_default_to_the_same_registry` (crates/server/tests/api_tests.rs) | built |  |
-| AC-15 | `config::tests::ac15_legacy_registry_url_is_replaced_on_load_and_written_on_save`, `ac15_custom_registry_url_is_kept` (crates/core/src/config.rs) | built |  |
-| AC-16 | `.github/workflows/release-build.yml` (`KRAKE_REGISTRY_PUBKEY_HEX` from `vars.AMIGO_UPDATE_PUBKEY_HEX`, step "Require pinned signing keys") | built |  |
-| AC-17 | `ac17_suggest_uses_the_configured_registry`, `ac17_unreachable_registry_means_no_suggestion`, `ac17_suggest_verifies_the_registry_signature` (crates/server/tests/api_tests.rs) | built |  |
-| AC-18 | `plugins_remote::tests::ac18_search_matches_id_name_description_and_tags` (crates/cli/src/plugins_remote.rs) | built |  |
-| AC-19 | `ac19_update_all_reports_each_plugin_and_skips_new_ones`, `ac19_failed_update_is_reported_and_fails_the_command` (crates/cli/src/plugins_remote.rs) | built |  |
-| AC-20 | `ac20_widened_access_needs_approval`, `ac20_without_yes_and_without_a_terminal_the_update_is_skipped`, `ac20_yes_flag_approves_without_asking` (crates/cli/src/plugins_remote.rs) | built |  |
-| AC-21 | `ac21_unavailable_registry_and_unknown_plugins_are_errors`, `ac21_no_paired_server_is_an_error`, `ac21_unreachable_server_is_named` (crates/cli/src/plugins_remote.rs) | built |  |
+| AC-01 | `ac01_one_entry_per_plugin_in_the_three_categories` (crates/plugin-runtime/tests/registry_build_tests.rs) | verified | 40d9938 |
+| AC-02 | `ac02_entry_fields_equal_the_declared_values` (crates/plugin-runtime/tests/registry_build_tests.rs) | verified | 40d9938 |
+| AC-03 | `ac03_download_url_path_and_sha256_match_the_written_artifact` (crates/plugin-runtime/tests/registry_build_tests.rs) | verified | 40d9938 |
+| AC-04 | `ac04_plugin_that_does_not_load_fails_the_build`, `ac04_invalid_id_fails_the_build`, `ac04_non_semver_version_fails_the_build`, `ac04_unsupported_host_api_fails_the_build`, `ac04_invalid_url_pattern_fails_the_build`, `ac04_non_utf8_source_fails_the_build`, `ac04_oversized_source_fails_the_build`, `ac04_duplicate_id_fails_the_build_and_names_every_failure` (crates/plugin-runtime/tests/registry_build_tests.rs) | verified | 40d9938 |
+| AC-05 | `ac05_raised_version_keeps_every_published_file`, `ac05_same_version_with_different_source_fails`, `ac05_lower_version_fails`, `ac05_version_deleted_from_index_but_still_published_is_checked`, `ac05_inconsistent_published_registry_fails` (crates/plugin-runtime/tests/registry_build_tests.rs) | verified | 40d9938 |
+| AC-06 | `ac06_empty_plugin_tree_fails` (crates/plugin-runtime/tests/registry_build_tests.rs) | verified | 40d9938 |
+| AC-07 | `ac07_build_and_signature_are_deterministic` (crates/plugin-runtime/tests/registry_build_tests.rs) | verified | 40d9938 |
+| AC-08 | `ac08_signed_index_is_accepted_by_the_registry_client` (crates/plugin-runtime/tests/registry_build_tests.rs) | verified | 40d9938 |
+| AC-09 | `ac09_signing_refuses_bad_or_missing_key_material` (crates/plugin-runtime/tests/registry_build_tests.rs) | verified | 40d9938 |
+| AC-10 | `registry_cmd::tests::ac10_publish_creates_extends_and_skips_unchanged` (crates/cli/src/registry_cmd.rs) | verified | b469da1 |
+| AC-11 | `registry_cmd::tests::ac11_moved_branch_fails_without_overwriting_then_rerun_succeeds`, `registry_cmd::tests::ac11_unverifiable_signature_is_never_committed` (crates/cli/src/registry_cmd.rs) | verified | b469da1 |
+| AC-12 | CI: registry-publish — run 44509230935 (`.github/workflows/registry-publish.yml`, job "Publish registry", main 2138301, 2026-11-19) green, "Registry unchanged"; `https://krake-registry.amigo-labs.dev/index.json` lists exactly the six plugins of 2138301, is byte-identical to branch `registry` and its signature verifies against the pinned update key (checked 2026-11-22) | verified | d5ceb4a |
+| AC-13 | CI: pr — job "Plugin registry check" (`.github/workflows/ci.yml`, `krake plugins registry check`) green in run 45025159523 (76a8946; no plugin, runtime or CLI change up to e0728a9); failing path: `ac05_same_version_with_different_source_fails`, `ac05_lower_version_fails` (crates/plugin-runtime/tests/registry_build_tests.rs) | verified | d5ceb4a |
+| AC-14 | `config::tests::ac14_default_registry_url_is_the_published_registry` (crates/core/src/config.rs), `registry::tests::ac14_default_index_url_is_the_published_registry` (crates/plugin-runtime/src/registry.rs), `ac14_server_and_runtime_default_to_the_same_registry` (crates/server/tests/api_tests.rs) | verified | 24289a0 |
+| AC-15 | `config::tests::ac15_legacy_registry_url_is_replaced_on_load_and_written_on_save`, `config::tests::ac15_custom_registry_url_is_kept` (crates/core/src/config.rs) | verified | 24289a0 |
+| AC-16 | CI: release — run 44509230843 (release via release-please, 2138301): step "Require pinned signing keys" green in all five CLI jobs, `KRAKE_REGISTRY_PUBKEY_HEX` from `vars.AMIGO_UPDATE_PUBKEY_HEX` (`.github/workflows/release-build.yml`); job "Release build guard (pinned signing keys)" green in CI run 45025159523; `crates/plugin-runtime/build.rs` refuses a release build without the key | verified | d5ceb4a |
+| AC-17 | `ac17_suggest_uses_the_configured_registry`, `ac17_unreachable_registry_means_no_suggestion`, `ac17_suggest_verifies_the_registry_signature` (crates/server/tests/api_tests.rs) | verified | 9b13c0f |
+| AC-18 | `plugins_remote::tests::ac18_search_matches_id_name_description_and_tags` (crates/cli/src/plugins_remote.rs) | verified | a246525 |
+| AC-19 | `plugins_remote::tests::ac19_update_all_reports_each_plugin_and_skips_new_ones`, `plugins_remote::tests::ac19_failed_update_is_reported_and_fails_the_command` (crates/cli/src/plugins_remote.rs) | verified | a246525 |
+| AC-20 | `plugins_remote::tests::ac20_widened_access_needs_approval`, `plugins_remote::tests::ac20_without_yes_and_without_a_terminal_the_update_is_skipped`, `plugins_remote::tests::ac20_yes_flag_approves_without_asking` (crates/cli/src/plugins_remote.rs) | verified | a246525 |
+| AC-21 | `plugins_remote::tests::ac21_unavailable_registry_and_unknown_plugins_are_errors`, `plugins_remote::tests::ac21_no_paired_server_is_an_error`, `plugins_remote::tests::ac21_unreachable_server_is_named` (crates/cli/src/plugins_remote.rs) | verified | a246525 |
 
 ## Decisions
 
