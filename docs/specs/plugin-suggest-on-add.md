@@ -190,15 +190,15 @@ Card sketch (above the Add button, inside the URL tab):
 
 | AC    | Test | Status | Commit |
 | ----- | ---- | ------ | ------ |
-| AC-01 |      | open   |        |
-| AC-02 |      | open   |        |
-| AC-03 |      | open   |        |
-| AC-04 |      | open   |        |
-| AC-05 |      | open   |        |
-| AC-06 |      | open   |        |
-| AC-07 |      | open   |        |
-| AC-08 |      | open   |        |
-| AC-09 |      | open   |        |
+| AC-01 | `ac01_suggestions_group_links_per_plugin_in_input_order`, `ac01_domains_keep_unscoped_and_empty_apart` (crates/plugin-runtime/src/registry.rs); `suggest_ac01_ac02_a_list_of_links_gets_hoster_suggestions` (crates/server/tests/api_tests.rs) | built |  |
+| AC-02 | `ac02_only_hoster_plugins_are_suggested` (crates/plugin-runtime/src/registry.rs); `suggest_ac01_ac02_a_list_of_links_gets_hoster_suggestions` (crates/server/tests/api_tests.rs) | built |  |
+| AC-03 | `ac03_links_an_enabled_hoster_or_multi_hoster_handles_get_nothing` (crates/plugin-runtime/src/registry.rs) | built |  |
+| AC-04 | `ac04_ac06_a_disabled_installed_hoster_is_offered_for_enabling` (crates/plugin-runtime/src/registry.rs) | built |  |
+| AC-05 | `ac05_incompatible_registry_plugins_are_left_out` (crates/plugin-runtime/src/registry.rs) | built |  |
+| AC-06 | `ac06_the_first_registry_plugin_wins_a_link`, `ac04_ac06_a_disabled_installed_hoster_is_offered_for_enabling` (crates/plugin-runtime/src/registry.rs) | built |  |
+| AC-07 | `ac07_without_a_registry_only_enable_suggestions_remain` (crates/plugin-runtime/src/registry.rs); `suggest_ac07_an_unreachable_registry_means_no_install_suggestion` (crates/server/tests/api_tests.rs) | built |  |
+| AC-08 | `ac08_non_web_links_are_ignored` (crates/plugin-runtime/src/registry.rs); `suggest_ac08_bad_lists_are_refused` (crates/server/tests/api_tests.rs) | built |  |
+| AC-09 | `suggest_ac09_the_single_url_form_is_unchanged`, `ac17_*` (crates/server/tests/api_tests.rs) | built |  |
 | AC-10 |      | open   |        |
 | AC-11 |      | open   |        |
 | AC-12 |      | open   |        |
@@ -220,3 +220,16 @@ Card sketch (above the Add button, inside the URL tab):
 - 2026-11-22: The add panel never waits for a suggestion, because adding
   links must keep working when the registry is slow or offline (user's
   choice).
+- 2026-11-22 (build): The selection rules live in one pure function in the
+  plugin runtime, `registry::suggest_for_links`, because they need only the
+  registry index and the loaded plugin list; the server handler only loads
+  both. Its unit tests cover AC-02 to AC-06 without a plugin host.
+- 2026-11-22 (build): A registry plugin whose `id` is already installed is
+  never an install suggestion, because installing it again is an update,
+  which the Plugins page offers with its own domain comparison.
+- 2026-11-22 (build): `suggest_ac09_the_single_url_form_is_unchanged` was
+  green at once: it guards existing behaviour (plugin-registry AC-17) against
+  the new list form, so there is no red run for AC-09.
+- 2026-11-22 (build): A body with `null`, a string or numbers in `urls` is
+  rejected by the JSON extractor (`422`); both or neither field and more than
+  1 000 links answer `400` with an `error` message.

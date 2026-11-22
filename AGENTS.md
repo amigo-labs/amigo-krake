@@ -546,7 +546,7 @@ POST   /usenet/watch-dir
 # Plugins
 GET    /plugins
 PATCH  /plugins/{id}
-POST   /plugins/suggest                   # suggest a plugin for a URL
+POST   /plugins/suggest                   # suggest plugins for a URL or a list of links
 
 # Captcha (manual solving via Web UI)
 GET    /captcha/pending
