@@ -66,6 +66,20 @@ pub fn env_flag(name: &str) -> bool {
         .is_ok_and(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
 }
 
+/// The plugin registry's configuration for a server whose plugins live in
+/// `plugins_dir`: the cached index sits with the plugins, never in the
+/// working directory (desktop-app AC-6; for the binary it is the same place).
+pub fn registry_config_for(
+    config: &Config,
+    plugins_dir: &std::path::Path,
+    dev_unsigned: bool,
+) -> RegistryConfig {
+    let mut registry_config =
+        RegistryConfig::for_index(config.update.plugin_registry_url.clone(), dev_unsigned);
+    registry_config.cache_path = Some(plugins_dir.join("index.json"));
+    registry_config
+}
+
 /// Start the server stack on `opts.listener` and return once it accepts
 /// connections.
 pub async fn serve(opts: ServeOptions) -> anyhow::Result<ServerHandle> {
@@ -209,11 +223,7 @@ pub async fn serve(opts: ServeOptions) -> anyhow::Result<ServerHandle> {
     }
     // Derived from `RegistryConfig::default()`, which never trusts the
     // all-zero placeholder key of a build without KRAKE_REGISTRY_PUBKEY_HEX.
-    let mut registry_config =
-        RegistryConfig::for_index(config.update.plugin_registry_url.clone(), dev_unsigned);
-    // The cached index sits with the plugins, never in the working
-    // directory (desktop-app AC-6; for the binary it is the same place).
-    registry_config.cache_path = Some(plugins_dir_for_cache.join("index.json"));
+    let registry_config = registry_config_for(&config, &plugins_dir_for_cache, dev_unsigned);
     let plugin_updater = Arc::new(PluginUpdater::new(
         registry_config,
         http_client.clone(),

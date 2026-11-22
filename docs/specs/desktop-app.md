@@ -574,12 +574,12 @@ pub enum UpdateMode {
 | AC-3 | `ac3_the_launch_token_signs_in_once`, `ac3_the_session_belongs_to_the_desktop_principal`, `ac3_without_desktop_mode_the_route_does_not_exist` (crates/server/tests/desktop_tests.rs) | built |  |
 | AC-4 | `ac4_desktop_mode_needs_no_setup` (crates/server/tests/desktop_tests.rs) | built |  |
 | AC-5 | `ac1_ac5_api_needs_a_credential_and_the_web_ui_is_served` (crates/server/tests/desktop_tests.rs) | built |  |
-| AC-6 | `desktop::paths::tests::ac6_every_file_lives_under_app_data`, `ac6_first_start_downloads_go_to_the_user_downloads_folder`, `ac6_relative_folders_never_point_at_the_working_directory` (crates/server/src/desktop/paths.rs) | built |  |
+| AC-6 | `desktop::paths::tests::ac6_every_file_lives_under_app_data`, `ac6_first_start_downloads_go_to_the_user_downloads_folder`, `ac6_relative_folders_never_point_at_the_working_directory` (crates/server/src/desktop/paths.rs), `ac6_the_registry_cache_lives_with_the_plugins` (crates/server/tests/desktop_tests.rs) | built |  |
 | AC-7 | `ac7_the_plugin_host_is_bundled_as_a_sidecar` (crates/server/tests/desktop_conf_tests.rs); resolving a plugin URL in an installed release build: manual (first release) | built |  |
-| AC-8 | `embedded::serve` starts Click'n'Load only with `start_clicknload`; tauri/src/app.rs has no listener of its own (code review) | built |  |
+| AC-8 | `ac8_clicknload_starts_once_through_serve` (crates/server/tests/desktop_tests.rs) | built |  |
 | AC-9 | `ac9_tray_pauses_and_resumes_every_download` (crates/server/tests/desktop_tests.rs); hide on close, tray menu: manual (first release) | built |  |
 | AC-10 | tauri-plugin-single-instance registered first in tauri/src/app.rs; focus and hand-over: manual (first release) | built |  |
-| AC-11 | `desktop::links::tests::ac11_*` (crates/server/src/desktop/links.rs), `ac10_ac11_deep_link_schemes_are_registered` (crates/server/tests/desktop_conf_tests.rs) | built |  |
+| AC-11 | `desktop::links::tests::ac11_*` (crates/server/src/desktop/links.rs), `ac11_a_link_to_a_private_address_is_refused_like_the_api_does` (crates/server/tests/desktop_tests.rs), `ac10_ac11_deep_link_schemes_are_registered` (crates/server/tests/desktop_conf_tests.rs) | built |  |
 | AC-12 | `desktop::links::tests::ac12_magnet_links_are_declined` (crates/server/src/desktop/links.rs); the notification: manual (first release) | built |  |
 | AC-13 | `ac13_is_due_after_the_interval_or_when_the_clock_went_back`, `ac13_ac15_auto_checks_when_due_and_installs`, `ac13_ac16_no_background_check_under_never_or_without_self_update` (crates/server/src/desktop/update.rs) | built |  |
 | AC-14 | `ac14_a_failed_verification_installs_nothing` (crates/server/src/desktop/update.rs), `ac14_the_updater_trusts_the_organization_key` (crates/server/tests/desktop_release_conf_tests.rs); tauri/src/updater.rs verifies before install or hold | built |  |
@@ -667,4 +667,9 @@ pub enum UpdateMode {
   contract only has "ready". The release fixtures are signed with a
   throwaway key, because the org key never leaves the release secrets; the
   real `.sig` files pass the same guard during a release.
+- 2026-11-22 (acceptance round 1): deep links run the same outbound-URL
+  guard as `POST /downloads` (`desktop::links::queue_link`); a second
+  launch's links are handled only through the deep-link event (the
+  single-instance plugin's `deep-link` feature emits it), not also from its
+  `argv`, so a link is queued and a magnet notice shown once.
 

@@ -751,3 +751,70 @@ async fn ac31_ac34_ac35_routes_are_absent_outside_desktop_mode() {
         assert_eq!(status, 404, "{path}");
     }
 }
+
+#[tokio::test]
+async fn ac11_a_link_to_a_private_address_is_refused_like_the_api_does() {
+    use krake_server::desktop::links::queue_link;
+    let server = start(Some(Arc::new(FakeUpdater::default()))).await;
+    let coordinator = server.handle.coordinator.clone();
+    for url in [
+        "http://127.0.0.1:9/x",
+        "http://192.168.1.10/file.bin",
+        "http://[::1]/y",
+    ] {
+        let err = queue_link(&coordinator, url, Some("desktop".into()))
+            .await
+            .expect_err("private target must be refused");
+        assert!(err.contains("URL rejected"), "{url}: {err}");
+    }
+    assert!(
+        coordinator
+            .storage()
+            .list_downloads()
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    let ids = queue_link(
+        &coordinator,
+        "https://example.com/file.zip",
+        Some("desktop".into()),
+    )
+    .await
+    .unwrap();
+    let row = coordinator
+        .storage()
+        .get_download(&ids[0])
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(row.owner.as_deref(), Some("desktop"));
+}
+
+#[test]
+fn ac6_the_registry_cache_lives_with_the_plugins() {
+    let plugins = std::path::Path::new("/data/krake/plugins");
+    let registry = embedded::registry_config_for(&Config::default(), plugins, false);
+    let cache = registry.cache_path.expect("a cache path");
+    assert!(cache.starts_with(plugins), "{}", cache.display());
+}
+
+/// AC-8: Click'n'Load is started by `embedded::serve` only; the desktop app
+/// asks for it there and starts no listener of its own.
+#[test]
+fn ac8_clicknload_starts_once_through_serve() {
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tauri/src");
+    let mut asks = 0;
+    for entry in std::fs::read_dir(&src).unwrap() {
+        let path = entry.unwrap().path();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            !text.contains("start_clicknload("),
+            "{} starts Click'n'Load itself",
+            path.display()
+        );
+        asks += text.matches("start_clicknload: true").count();
+    }
+    assert_eq!(asks, 1, "the desktop app asks serve for Click'n'Load once");
+}

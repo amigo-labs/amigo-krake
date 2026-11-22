@@ -45,6 +45,23 @@ pub fn parse_all<'a>(args: impl IntoIterator<Item = &'a str>) -> Vec<DeepLink> {
     args.into_iter().filter_map(parse).collect()
 }
 
+/// Queue a `krake://add` link's URL like `POST /api/v1/downloads` does:
+/// the same outbound-URL guard first (no private or loopback targets), then
+/// every download the URL stands for, owned by `owner` (AC-11).
+pub async fn queue_link(
+    coordinator: &krake_core::coordinator::Coordinator,
+    url: &str,
+    owner: Option<String>,
+) -> Result<Vec<String>, String> {
+    crate::net_guard::validate_outbound_url(url, false)
+        .await
+        .map_err(|e| format!("URL rejected: {e}"))?;
+    coordinator
+        .add_download_all(url, None, None, 0, owner)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 fn is_web_url(url: &str) -> bool {
     let lower = url.to_ascii_lowercase();
     (lower.starts_with("http://") || lower.starts_with("https://")) && url.len() > "https://".len()

@@ -40,9 +40,11 @@ pub fn run() {
     tauri::Builder::default()
         // First: a second launch hands its arguments to this one and exits
         // without starting a second server (AC-10).
-        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+        // Its `deep-link` feature turns the second launch's link arguments
+        // into deep-link events, which `on_open_url` below handles; handling
+        // `argv` here as well would queue a link twice.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             show_main(app);
-            handle_args(app, argv.iter().map(String::as_str));
         }))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_deep_link::init())
@@ -242,9 +244,8 @@ fn handle_args<'a>(app: &AppHandle, args: impl IntoIterator<Item = &'a str>) {
             DeepLink::Add(url) => {
                 show_main(app);
                 with_coordinator(app, move |c| async move {
-                    if let Err(e) = c
-                        .add_download_all(&url, None, None, 0, Some(DESKTOP_PRINCIPAL.to_string()))
-                        .await
+                    if let Err(e) =
+                        links::queue_link(&c, &url, Some(DESKTOP_PRINCIPAL.to_string())).await
                     {
                         tracing::warn!("Could not add {url} from a link: {e}");
                     }
