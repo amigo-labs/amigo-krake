@@ -1,5 +1,5 @@
 ---
-status: todo
+status: implemented
 created: 2026-11-22
 size: M
 design: [AGENTS.md "Plugin-System" (Registry & Updates, Sandboxing), AGENTS.md "REST API" (Plugins), docs/plugin-api.md]
@@ -57,7 +57,7 @@ neither endpoint.
 
 ## Acceptance criteria
 
-- [ ] AC-01 (event): When `POST /api/v1/plugins/suggest` is called with
+- [x] AC-01 (event): When `POST /api/v1/plugins/suggest` is called with
   `{"urls": [...]}`, then the server answers `200` with
   `{"suggestions": [...]}`: one entry per suggested plugin with its `id`,
   `name`, `version`, `domains` (the plugin's `permissions.domains`: `null`
@@ -66,63 +66,72 @@ neither endpoint.
   same string listed once, in input order) and `action` (`"install"` or
   `"enable"`). Entries are ordered by the position of their first covered
   link in the input.
-- [ ] AC-02 (always): The server suggests only plugins whose plugin type is
+- [x] AC-02 (always): The server suggests only plugins whose plugin type is
   `hoster` (in the registry: tagged `hoster`); a `multi-hoster` or `generic`
   plugin is never suggested, even when it is the only one whose pattern
   matches.
-- [ ] AC-03 (always): The server suggests nothing for a link that an
+- [x] AC-03 (always): The server suggests nothing for a link that an
   installed, enabled `hoster` or `multi-hoster` plugin already matches; a
   link that only an installed generic plugin (or no plugin) matches can get a
   suggestion.
-- [ ] AC-04 (event): When a link matches an installed but disabled `hoster`
+- [x] AC-04 (event): When a link matches an installed but disabled `hoster`
   plugin and no enabled `hoster` or `multi-hoster` plugin, then the server
   suggests that installed plugin with `action: "enable"` (and its installed
   `version` and `domains`), and no registry plugin for that link.
-- [ ] AC-05 (always): The server only suggests a registry plugin for
+- [x] AC-05 (always): The server only suggests a registry plugin for
   `action: "install"` that the server's install endpoint would accept for its
   host API and app version; an incompatible plugin is left out.
-- [ ] AC-06 (always): A link appears in the `urls` of at most one
+- [x] AC-06 (always): A link appears in the `urls` of at most one
   suggestion. Among several candidates (after AC-02 to AC-05) the installed
   disabled plugin wins (among several, the one first in the server's plugin
   list); among registry plugins, the one listed first in the registry index.
-- [ ] AC-07 (error): If the registry is unreachable or fails signature
+- [x] AC-07 (error): If the registry is unreachable or fails signature
   verification, then the answer is `200` and holds no `action: "install"`
   suggestion; `action: "enable"` suggestions, which need no registry, are
   still given.
-- [ ] AC-08 (error): If `urls` holds more than 1 000 entries (counted as
+- [x] AC-08 (error): If `urls` holds more than 1 000 entries (counted as
   sent, duplicates and non-links included), is not a list of strings
   (`null` included), or the body has both `url` and `urls` or neither, then
   the server answers `400` or `422` and no suggestions. Entries that are not `http`/`https` URLs are ignored,
   because plugin URL patterns only match web links; an empty list answers
   `200` with no suggestions.
-- [ ] AC-09 (always): `POST /api/v1/plugins/suggest` with `{"url": "..."}`
+- [x] AC-09 (always): `POST /api/v1/plugins/suggest` with `{"url": "..."}`
   answers exactly as before this spec (plugin-registry AC-17).
-- [ ] AC-10 (event): When the add panel's URL field holds at least one link
+- [x] AC-10 (event): When the add panel's URL field holds at least one link
   (links as the panel already counts them for its "n links" note) and the
   field has not changed for 500 ms, then within one second the panel shows
   one card per suggestion for those links with the plugin name, the number of
   links it covers, all its domains ("any public host" when unscoped, "no
   hosts" for an empty list; more than three are shown behind a "show all"
   toggle) and an Install or Enable button.
-- [ ] AC-11 (event): When the user clicks Install on a card, then the plugin
+- [x] AC-11 (event): When the user clicks Install on a card, then the plugin
   is installed with its domains approved, a success toast names the plugin
   and the panel asks again for the current links, so the card disappears and
   any other card whose links the new plugin now covers goes too. When the
   user clicks Enable, the installed plugin is enabled (no domain approval:
   its domains were approved at its install), with the same toast and refresh.
-- [ ] AC-12 (error): If installing or enabling fails, then an error toast
+- [x] AC-12 (error): If installing or enabling fails, then an error toast
   with a translated title shows the server's (English) message, the card stays with its button usable again,
   and the URL field keeps its links.
-- [ ] AC-13 (state): While a lookup runs, and after it failed, the Add
+- [x] AC-13 (state): While a lookup runs, and after it failed, the Add
   button queues the links as without this feature, and a failed lookup shows
   no error.
-- [ ] AC-14 (state): While the URL field changes, the panel only shows the
+- [x] AC-14 (state): While the URL field changes, the panel only shows the
   answer to its latest lookup: an answer to an earlier lookup that arrives
   later is dropped, and a field without links shows no cards.
-- [ ] AC-15 (always): Every new text of this feature — the card line with
+- [x] AC-15 (always): Every new text of this feature — the card line with
   the link count, the domain line with "any public host" and "no hosts",
   "show all", Install, Enable, the success toasts and the error toast titles — exists in English and
   German.
+
+## Summary
+
+> Completed: 2026-11-22
+
+- `POST /api/v1/plugins/suggest` takes `{"urls": [...]}` (up to 1 000) and answers with the `hoster` plugins that would handle the links better than the installed ones, one entry per plugin with its covered links and `action` `install` or `enable`; the single `{"url": ...}` form is unchanged.
+- The selection rules live in `registry::suggest_for_links`: enabled hosters and multi-hosters win, a disabled installed hoster is offered for enabling ahead of the registry, multi-hosters, generic and incompatible plugins are never suggested, and an unavailable registry leaves only enable suggestions.
+- The add panel asks for suggestions 500 ms after its links stop changing and shows one card per plugin with its link count, its domains (folded after three) and an Install or Enable button; installs approve the shown domains, and the cards refresh afterwards.
+- Lookups never block adding links: running or failed lookups are silent, and only the latest answer is shown.
 
 ## Technical notes
 
@@ -190,21 +199,21 @@ Card sketch (above the Add button, inside the URL tab):
 
 | AC    | Test | Status | Commit |
 | ----- | ---- | ------ | ------ |
-| AC-01 | `ac01_suggestions_group_links_per_plugin_in_input_order`, `ac01_domains_keep_unscoped_and_empty_apart` (crates/plugin-runtime/src/registry.rs); `suggest_ac01_ac02_a_list_of_links_gets_hoster_suggestions` (crates/server/tests/api_tests.rs) | built |  |
-| AC-02 | `ac02_only_hoster_plugins_are_suggested` (crates/plugin-runtime/src/registry.rs); `suggest_ac01_ac02_a_list_of_links_gets_hoster_suggestions` (crates/server/tests/api_tests.rs) | built |  |
-| AC-03 | `ac03_links_an_enabled_hoster_or_multi_hoster_handles_get_nothing` (crates/plugin-runtime/src/registry.rs) | built |  |
-| AC-04 | `ac04_ac06_a_disabled_installed_hoster_is_offered_for_enabling` (crates/plugin-runtime/src/registry.rs) | built |  |
-| AC-05 | `ac05_incompatible_registry_plugins_are_left_out` (crates/plugin-runtime/src/registry.rs) | built |  |
-| AC-06 | `ac06_the_first_registry_plugin_wins_a_link`, `ac04_ac06_a_disabled_installed_hoster_is_offered_for_enabling` (crates/plugin-runtime/src/registry.rs) | built |  |
-| AC-07 | `ac07_without_a_registry_only_enable_suggestions_remain` (crates/plugin-runtime/src/registry.rs); `suggest_ac07_an_unreachable_registry_means_no_install_suggestion` (crates/server/tests/api_tests.rs) | built |  |
-| AC-08 | `ac08_non_web_links_are_ignored` (crates/plugin-runtime/src/registry.rs); `suggest_ac08_bad_lists_are_refused` (crates/server/tests/api_tests.rs) | built |  |
-| AC-09 | `suggest_ac09_the_single_url_form_is_unchanged`, `ac17_*` (crates/server/tests/api_tests.rs) | built |  |
-| AC-10 | "AC-10 asks once for all links after 500 ms without change", "domain line (AC-10)" (web-ui/test/pluginSuggest.test.ts); "AC-10 shows name, link count, domains behind show all, and Install", "AC-10 names unscoped and empty domain lists, and Enable for an installed plugin" (web-ui/test/pluginSuggestions.dom.test.ts) | built |  |
-| AC-11 | "AC-11 refresh asks again for the current links at once" (web-ui/test/pluginSuggest.test.ts); "AC-11 Install approves the domains, toasts and asks again", "AC-11 Enable enables the installed plugin", "AC-11 a failed refresh after an install still removes the installed card" (web-ui/test/pluginSuggestions.dom.test.ts) | built |  |
-| AC-12 | "AC-12 a failed install keeps the card and its button, with an error toast", "AC-12 a failed enable keeps the card, its button and the field's links" (web-ui/test/pluginSuggestions.dom.test.ts) | built |  |
-| AC-13 | "AC-13 a failed lookup reports nothing and throws nothing" (web-ui/test/pluginSuggest.test.ts); "add panel (AC-13) queues the links while a lookup is still running" (web-ui/test/pluginSuggestions.dom.test.ts) | built |  |
-| AC-14 | "AC-14 drops an answer to an earlier lookup that arrives later", "AC-14 a field without links shows no cards at once and drops the pending answer", "AC-14 a failed lookup for changed links clears the cards of the old links" (web-ui/test/pluginSuggest.test.ts) | built |  |
-| AC-15 | "AC-15 cards, buttons and toasts read German" (web-ui/test/pluginSuggestions.dom.test.ts); "every literal tr() key exists in the en and de tables" (web-ui/test/i18nKeys.test.ts), which sees all 11 keys of `PluginSuggestions.svelte` | built |  |
+| AC-01 | `ac01_suggestions_group_links_per_plugin_in_input_order`, `ac01_domains_keep_unscoped_and_empty_apart` (crates/plugin-runtime/src/registry.rs); `suggest_ac01_ac02_a_list_of_links_gets_hoster_suggestions` (crates/server/tests/api_tests.rs) | verified | a663ab5 |
+| AC-02 | `ac02_only_hoster_plugins_are_suggested` (crates/plugin-runtime/src/registry.rs); `suggest_ac01_ac02_a_list_of_links_gets_hoster_suggestions` (crates/server/tests/api_tests.rs) | verified | a663ab5 |
+| AC-03 | `ac03_links_an_enabled_hoster_or_multi_hoster_handles_get_nothing` (crates/plugin-runtime/src/registry.rs) | verified | a663ab5 |
+| AC-04 | `ac04_ac06_a_disabled_installed_hoster_is_offered_for_enabling` (crates/plugin-runtime/src/registry.rs) | verified | a663ab5 |
+| AC-05 | `ac05_incompatible_registry_plugins_are_left_out` (crates/plugin-runtime/src/registry.rs) | verified | a663ab5 |
+| AC-06 | `ac06_the_first_registry_plugin_wins_a_link`, `ac04_ac06_a_disabled_installed_hoster_is_offered_for_enabling` (crates/plugin-runtime/src/registry.rs) | verified | a663ab5 |
+| AC-07 | `ac07_without_a_registry_only_enable_suggestions_remain` (crates/plugin-runtime/src/registry.rs); `suggest_ac07_an_unreachable_registry_means_no_install_suggestion` (crates/server/tests/api_tests.rs) | verified | a663ab5 |
+| AC-08 | `ac08_non_web_links_are_ignored` (crates/plugin-runtime/src/registry.rs); `suggest_ac08_bad_lists_are_refused` (crates/server/tests/api_tests.rs) | verified | a663ab5 |
+| AC-09 | `suggest_ac09_the_single_url_form_is_unchanged`, `ac17_*` (crates/server/tests/api_tests.rs) | verified | 27d657f |
+| AC-10 | "AC-10 asks once for all links after 500 ms without change", "domain line (AC-10)" (web-ui/test/pluginSuggest.test.ts); "AC-10 shows name, link count, domains behind show all, and Install", "AC-10 names unscoped and empty domain lists, and Enable for an installed plugin" (web-ui/test/pluginSuggestions.dom.test.ts) | verified | afe4620 |
+| AC-11 | "AC-11 refresh asks again for the current links at once" (web-ui/test/pluginSuggest.test.ts); "AC-11 Install approves the domains, toasts and asks again", "AC-11 Enable enables the installed plugin", "AC-11 a failed refresh after an install still removes the installed card" (web-ui/test/pluginSuggestions.dom.test.ts) | verified | afe4620 |
+| AC-12 | "AC-12 a failed install keeps the card and its button, with an error toast", "AC-12 a failed enable keeps the card, its button and the field's links" (web-ui/test/pluginSuggestions.dom.test.ts) | verified | afe4620 |
+| AC-13 | "AC-13 a failed lookup reports nothing and throws nothing" (web-ui/test/pluginSuggest.test.ts); "add panel (AC-13) queues the links while a lookup is still running" (web-ui/test/pluginSuggestions.dom.test.ts) | verified | afe4620 |
+| AC-14 | "AC-14 drops an answer to an earlier lookup that arrives later", "AC-14 a field without links shows no cards at once and drops the pending answer", "AC-14 a failed lookup for changed links clears the cards of the old links" (web-ui/test/pluginSuggest.test.ts) | verified | afe4620 |
+| AC-15 | "AC-15 cards, buttons and toasts read German" (web-ui/test/pluginSuggestions.dom.test.ts); "every literal tr() key exists in the en and de tables" (web-ui/test/i18nKeys.test.ts), which sees all 11 keys of `PluginSuggestions.svelte` | verified | afe4620 |
 
 ## Decisions
 
