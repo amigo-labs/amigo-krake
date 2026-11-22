@@ -201,10 +201,10 @@ Card sketch (above the Add button, inside the URL tab):
 | AC-09 | `suggest_ac09_the_single_url_form_is_unchanged`, `ac17_*` (crates/server/tests/api_tests.rs) | built |  |
 | AC-10 | "AC-10 asks once for all links after 500 ms without change", "domain line (AC-10)" (web-ui/test/pluginSuggest.test.ts); "AC-10 shows name, link count, domains behind show all, and Install", "AC-10 names unscoped and empty domain lists, and Enable for an installed plugin" (web-ui/test/pluginSuggestions.dom.test.ts) | built |  |
 | AC-11 | "AC-11 refresh asks again for the current links at once" (web-ui/test/pluginSuggest.test.ts); "AC-11 Install approves the domains, toasts and asks again", "AC-11 Enable enables the installed plugin", "AC-11 a failed refresh after an install still removes the installed card" (web-ui/test/pluginSuggestions.dom.test.ts) | built |  |
-| AC-12 | "AC-12 a failed install keeps the card and its button, with an error toast" (web-ui/test/pluginSuggestions.dom.test.ts) | built |  |
+| AC-12 | "AC-12 a failed install keeps the card and its button, with an error toast", "AC-12 a failed enable keeps the card, its button and the field's links" (web-ui/test/pluginSuggestions.dom.test.ts) | built |  |
 | AC-13 | "AC-13 a failed lookup reports nothing and throws nothing" (web-ui/test/pluginSuggest.test.ts); "add panel (AC-13) queues the links while a lookup is still running" (web-ui/test/pluginSuggestions.dom.test.ts) | built |  |
 | AC-14 | "AC-14 drops an answer to an earlier lookup that arrives later", "AC-14 a field without links shows no cards at once and drops the pending answer", "AC-14 a failed lookup for changed links clears the cards of the old links" (web-ui/test/pluginSuggest.test.ts) | built |  |
-| AC-15 | "every literal tr() key exists in the en and de tables" (web-ui/test/i18nKeys.test.ts) over the `add.suggest_*` keys of `PluginSuggestions.svelte` | built |  |
+| AC-15 | "AC-15 cards, buttons and toasts read German" (web-ui/test/pluginSuggestions.dom.test.ts); "every literal tr() key exists in the en and de tables" (web-ui/test/i18nKeys.test.ts), which sees all 11 keys of `PluginSuggestions.svelte` | built |  |
 
 ## Decisions
 
@@ -246,3 +246,8 @@ Card sketch (above the Add button, inside the URL tab):
   removed at once and the lookup runs again, so a failed refresh still drops
   the installed plugin's card (edge case "The refresh after an install
   fails").
+- 2026-11-22 (build): spec-check round 2 found test gaps, not code gaps: the
+  failed enable (AC-12) and the German texts picked by a ternary (AC-15) had
+  no test. Both new tests were green at once; the German one was shown to
+  fail by removing `add.suggest_enabled` from the `de` table. Every `tr()`
+  call now names its key literally, so the i18n key test sees all of them.

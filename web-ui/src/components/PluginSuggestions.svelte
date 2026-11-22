@@ -33,14 +33,20 @@
     try {
       if (enable) await setPluginEnabled(s.id, true);
       else await installPlugin(s.id, true);
-      addToast("success", tr($locale, enable ? "add.suggest_enabled" : "add.suggest_installed", { name: s.name }));
+      const name = { name: s.name };
+      addToast(
+        "success",
+        enable ? tr($locale, "add.suggest_enabled", name) : tr($locale, "add.suggest_installed", name),
+      );
       // Gone at once, even if the refresh below fails.
       suggestions = suggestions.filter((x) => x.id !== s.id);
       lookup.refresh();
     } catch (e) {
       addToast(
         "error",
-        tr($locale, enable ? "add.suggest_enable_failed" : "add.suggest_install_failed", { name: s.name }),
+        enable
+          ? tr($locale, "add.suggest_enable_failed", { name: s.name })
+          : tr($locale, "add.suggest_install_failed", { name: s.name }),
         e instanceof Error ? e.message : undefined,
       );
     } finally {
@@ -73,7 +79,7 @@
           </p>
           <div class="suggest-actions">
             <Button size="sm" variant="soft" loading={busyId === s.id} disabled={busyId !== null} onclick={() => act(s)}>
-              {tr($locale, s.action === "enable" ? "add.suggest_enable" : "plugins.install")}
+              {s.action === "enable" ? tr($locale, "add.suggest_enable") : tr($locale, "plugins.install")}
             </Button>
           </div>
         </Card>

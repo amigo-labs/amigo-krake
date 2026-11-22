@@ -149,6 +149,66 @@ describe("suggestion cards", () => {
   });
 });
 
+describe("failed enable and German texts", () => {
+  it("AC-12 a failed enable keeps the card, its button and the field's links", async () => {
+    api.suggestPlugins.mockResolvedValue([{ ...BUNKR, action: "enable" }]);
+    api.setPluginEnabled.mockRejectedValue(new Error("plugin not found"));
+    app = mount(AddPanel, { target: document.body });
+    flushSync();
+    const field = document.querySelector("textarea") as HTMLTextAreaElement;
+    field.value = BUNKR.urls.join("\n");
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+    await cardsShown(1);
+
+    button(cards()[0], "Enable").click();
+    await vi.waitFor(() => {
+      flushSync();
+      expect(get(toasts)).toHaveLength(1);
+    });
+    expect(get(toasts)[0]).toMatchObject({ type: "error", title: "Could not enable Bunkr", message: "plugin not found" });
+    flushSync();
+    expect(cards()).toHaveLength(1);
+    expect(button(cards()[0], "Enable").disabled).toBe(false);
+    expect(field.value).toBe(BUNKR.urls.join("\n"));
+  });
+
+  it("AC-15 cards, buttons and toasts read German", async () => {
+    locale.set("de");
+    api.suggestPlugins
+      .mockResolvedValueOnce([BUNKR, { ...BUNKR, id: "old", name: "Old", action: "enable", domains: null }])
+      .mockResolvedValueOnce([BUNKR])
+      .mockResolvedValue([]);
+    api.installPlugin.mockRejectedValueOnce(new Error("x")).mockResolvedValueOnce({});
+    api.setPluginEnabled.mockRejectedValueOnce(new Error("y")).mockResolvedValueOnce(undefined);
+    render([...BUNKR.urls, "https://old.test/1"]);
+    await cardsShown(2);
+    const [bunkr, old] = cards();
+    expect(bunkr.textContent).toContain("Bunkr kann 2 dieser Links laden");
+    expect(bunkr.textContent).toContain("Darf verbinden mit:");
+    expect(button(bunkr, "Alle zeigen (5)")).toBeTruthy();
+    expect(old.textContent).toContain("jedem öffentlichen Host");
+
+    const titles = async (n: number) =>
+      vi.waitFor(() => {
+        flushSync();
+        expect(get(toasts)).toHaveLength(n);
+      });
+    // Both fail first, then enable succeeds (the refresh keeps Bunkr), then install.
+    button(bunkr, "Installieren").click();
+    await titles(1);
+    button(old, "Aktivieren").click();
+    await titles(2);
+    button(old, "Aktivieren").click();
+    await titles(3);
+    await cardsShown(1);
+    button(cards()[0], "Installieren").click();
+    await titles(4);
+    expect(get(toasts).map((t) => t.title).sort()).toEqual(
+      ["Bunkr konnte nicht installiert werden", "Old konnte nicht aktiviert werden", "Bunkr installiert", "Old aktiviert"].sort(),
+    );
+  });
+});
+
 describe("add panel (AC-13)", () => {
   it("queues the links while a lookup is still running", async () => {
     api.suggestPlugins.mockReturnValue(new Promise(() => {}));
