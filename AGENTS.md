@@ -546,7 +546,7 @@ POST   /usenet/watch-dir
 # Plugins
 GET    /plugins
 PATCH  /plugins/{id}
-POST   /plugins/suggest                   # suggest a plugin for a URL
+POST   /plugins/suggest                   # suggest plugins for a URL or a list of links
 
 # Captcha (manual solving via Web UI)
 GET    /captcha/pending
@@ -722,6 +722,7 @@ Pitfalls that code and git history don't show. Short entries; `/spec-build` adds
 - **Progress lives in memory until a transfer ends.** Bytes and speed of a running download are not in SQLite; REST handlers overlay them with `Coordinator::overlay_live_progress`. A new endpoint that returns download rows needs the same call.
 - **`target/` fills a session's disk.** Every test build leaves a test executable in `target/debug/deps`; after a few full gate runs they reach 15+ GB and links fail with "No space left on device" or a linker `Bus error`. Delete `target/debug/incremental` and the test executables in `target/debug/deps` (files with the execute bit, not `.rlib`/`.rmeta`/`.d`/`.so`) — only while no cargo command runs, or a parallel build loses its incremental files mid-compile.
 - **Web UI component tests mount in `happy-dom`** (`// @vitest-environment happy-dom`, Svelte's browser runtime via `resolve.conditions` in `web-ui/vitest.config.ts`). Its Web Animations never finish, so a component with a transition keeps closed dialogs in the DOM: stub `Element.prototype.animate` and wait with `vi.waitFor`, never a fixed delay (see `web-ui/test/settingsSecurity.dom.test.ts`). Pure rendering checks can use `svelte/server` in the node environment instead.
+- **The i18n key test only sees literal keys.** `web-ui/test/i18nKeys.test.ts` matches `tr($locale, "key"`; a key chosen inside the call (`tr($locale, a ? "x" : "y")`) is never checked, and a missing German entry silently falls back to English. Write `a ? tr($locale, "x") : tr($locale, "y")`.
 - **`DownloadEvent` is the WebSocket wire format.** It is serialized as is (fields next to `type`); `web-ui/src/lib/wsEvents.ts` parses exactly that. `crates/core/tests/event_wire_format.rs` and `web-ui/test/wsEvents.test.ts` pin the same payloads: change both sides together.
 
 ---

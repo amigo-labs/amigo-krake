@@ -1448,3 +1448,139 @@ async fn ac17_suggest_verifies_the_registry_signature() {
         assert_eq!(body["found"], false, "{body}");
     }
 }
+
+// =============================================================================
+// Plugin suggestion for a list of links (plugin-suggest-on-add)
+// =============================================================================
+
+const LIST_INDEX: &str = r#"{"schema_version":1,"plugins":[
+    {"id":"multi","name":"Multi","version":"1.0.0","description":"","author":"",
+     "url_pattern":"https?://hoster\\.test/.+","min_app_version":null,"sha256":"00",
+     "download_url":"https://x.test/m.ts","tags":["multi-hoster"]},
+    {"id":"hoster","name":"Hoster","version":"2.0.0","description":"","author":"",
+     "url_pattern":"https?://hoster\\.test/.+","min_app_version":null,"sha256":"00",
+     "download_url":"https://x.test/h.ts","tags":["hoster"],
+     "permissions":{"domains":["api.hoster.test"]}},
+    {"id":"generic","name":"Generic","version":"1.0.0","description":"","author":"",
+     "url_pattern":"https?://.+","min_app_version":null,"sha256":"00",
+     "download_url":"https://x.test/g.ts","tags":["generic"]}]}"#;
+
+async fn spawn_list_registry() -> SocketAddr {
+    let app = axum::Router::new().route("/index.json", axum::routing::get(|| async { LIST_INDEX }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    addr
+}
+
+async fn suggest_body(addr: SocketAddr, body: serde_json::Value) -> (u16, serde_json::Value) {
+    let resp = test_client()
+        .post(format!("{}/api/v1/plugins/suggest", base_url(addr)))
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    let status = resp.status().as_u16();
+    let json = resp.json().await.unwrap_or(serde_json::Value::Null);
+    (status, json)
+}
+
+#[tokio::test]
+async fn suggest_ac01_ac02_a_list_of_links_gets_hoster_suggestions() {
+    let registry = spawn_list_registry().await;
+    let addr = spawn_server_with_registry(format!("http://{registry}/index.json")).await;
+    let (status, body) = suggest_body(
+        addr,
+        serde_json::json!({ "urls": [
+            "https://unknown.test/1",
+            "https://hoster.test/a",
+            "https://hoster.test/b",
+            "https://hoster.test/a",
+            "ftp://hoster.test/c"
+        ]}),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        body,
+        serde_json::json!({ "suggestions": [{
+            "id": "hoster",
+            "name": "Hoster",
+            "version": "2.0.0",
+            "domains": ["api.hoster.test"],
+            "urls": ["https://hoster.test/a", "https://hoster.test/b"],
+            "action": "install"
+        }]})
+    );
+}
+
+#[tokio::test]
+async fn suggest_ac07_an_unreachable_registry_means_no_install_suggestion() {
+    let addr = spawn_server_with_registry("http://127.0.0.1:9/index.json".into()).await;
+    let (status, body) = suggest_body(
+        addr,
+        serde_json::json!({ "urls": ["https://hoster.test/a"] }),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body, serde_json::json!({ "suggestions": [] }));
+}
+
+#[tokio::test]
+async fn suggest_ac08_bad_lists_are_refused() {
+    let registry = spawn_list_registry().await;
+    let addr = spawn_server_with_registry(format!("http://{registry}/index.json")).await;
+
+    let too_many: Vec<String> = (0..1001)
+        .map(|i| format!("https://hoster.test/{i}"))
+        .collect();
+    let refused = [
+        serde_json::json!({ "urls": too_many }),
+        serde_json::json!({ "urls": [1, 2] }),
+        serde_json::json!({ "urls": "https://hoster.test/a" }),
+        serde_json::json!({ "urls": null }),
+        serde_json::json!({ "url": "https://hoster.test/a", "urls": null }),
+        serde_json::json!({ "url": null, "urls": ["https://hoster.test/a"] }),
+        serde_json::json!({ "url": "https://hoster.test/a", "urls": ["https://hoster.test/a"] }),
+        serde_json::json!({}),
+    ];
+    for body in refused {
+        let (status, answer) = suggest_body(addr, body.clone()).await;
+        assert!(
+            status == 400 || status == 422,
+            "{body} -> {status} {answer}"
+        );
+        assert!(answer.get("suggestions").is_none(), "{body} -> {answer}");
+    }
+
+    // Exactly 1 000 is allowed; an empty list has no suggestions.
+    let thousand: Vec<String> = (0..1000)
+        .map(|i| format!("https://hoster.test/{i}"))
+        .collect();
+    let (status, body) = suggest_body(addr, serde_json::json!({ "urls": thousand })).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        body["suggestions"][0]["urls"].as_array().unwrap().len(),
+        1000
+    );
+    let (status, body) = suggest_body(addr, serde_json::json!({ "urls": [] })).await;
+    assert_eq!(status, 200);
+    assert_eq!(body, serde_json::json!({ "suggestions": [] }));
+}
+
+#[tokio::test]
+async fn suggest_ac09_the_single_url_form_is_unchanged() {
+    let registry = spawn_list_registry().await;
+    let addr = spawn_server_with_registry(format!("http://{registry}/index.json")).await;
+    // The single form keeps its old answer: first registry match, any tag.
+    let body = suggest(addr, "https://hoster.test/a").await;
+    assert_eq!(
+        body,
+        serde_json::json!({
+            "found": true,
+            "plugin_id": "multi",
+            "plugin_name": "Multi",
+            "install_command": "krake plugins install multi"
+        })
+    );
+}

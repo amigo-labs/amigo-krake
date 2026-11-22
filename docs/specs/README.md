@@ -8,7 +8,6 @@ notes for Krake. The workflow is in `AGENTS.md`, "Spec-driven workflow".
 | # | Spec | Status | Depends on |
 | - | ---- | ------ | ---------- |
 | 2 | [desktop-app](desktop-app.md) | todo | — (three PRs: P1 embedded server, P2 tray, P3 updater, release and update choice) |
-| 3 | [plugin-suggest-on-add](plugin-suggest-on-add.md) | todo | plugin-registry (done) |
 
 ## Done
 
@@ -22,6 +21,7 @@ front matter; they are converted when next revised.
 - [local-auth-bypass](local-auth-bypass.md)
 - [plugin-packages](plugin-packages.md)
 - [plugin-registry](plugin-registry.md)
+- [plugin-suggest-on-add](plugin-suggest-on-add.md)
 - [plugin-wasm-guest](plugin-wasm-guest.md)
 - [plugin-wasm-sandbox](plugin-wasm-sandbox.md)
 - [rust-1-99-toolchain](rust-1-99-toolchain.md)

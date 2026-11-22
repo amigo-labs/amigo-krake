@@ -6,6 +6,7 @@ use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, Multipart, Path, State},
     http::StatusCode,
+    response::{IntoResponse, Response},
     routing::{delete, get, patch, post, put},
 };
 use serde::{Deserialize, Serialize};
@@ -587,9 +588,26 @@ async fn update_plugin(
 
 // --- Plugin suggestion ---
 
+/// `{"url": ...}` (one link, plugin-registry AC-17) or `{"urls": [...]}`
+/// (a list, plugin-suggest-on-add).
+///
+/// A field given as `null` counts as given, so `{"url": .., "urls": null}`
+/// is refused instead of read as the single form (AC-08).
 #[derive(Deserialize)]
 struct SuggestPluginRequest {
-    url: String,
+    #[serde(default, deserialize_with = "given")]
+    url: Option<Option<String>>,
+    #[serde(default, deserialize_with = "given")]
+    urls: Option<Option<Vec<String>>>,
+}
+
+/// `Some(..)` for a field present in the body, `null` included.
+fn given<'de, D, T>(d: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    T::deserialize(d).map(Some)
 }
 
 #[derive(Serialize)]
@@ -600,17 +618,50 @@ struct SuggestPluginResponse {
     install_command: Option<String>,
 }
 
+#[derive(Serialize)]
+struct SuggestLinksResponse {
+    suggestions: Vec<krake_plugin_runtime::registry::LinkSuggestion>,
+}
+
+/// Most links one list request may carry (plugin-suggest-on-add AC-08).
+const MAX_SUGGEST_LINKS: usize = 1000;
+
 async fn suggest_plugin(
     State(state): State<AppState>,
     Json(req): Json<SuggestPluginRequest>,
-) -> Json<SuggestPluginResponse> {
+) -> Response {
+    match (req.url, req.urls) {
+        (Some(Some(url)), None) => suggest_one(&state, &url).await.into_response(),
+        (None, Some(Some(urls))) if urls.len() <= MAX_SUGGEST_LINKS => {
+            // An unavailable or unverified registry leaves only the
+            // suggestions that need none (AC-07).
+            let index = state.plugin_updater.load_index().await.ok();
+            let installed = state.plugins.list_plugins().await;
+            let suggestions = krake_plugin_runtime::registry::suggest_for_links(
+                index.as_ref(),
+                &installed,
+                &urls,
+            );
+            Json(SuggestLinksResponse { suggestions }).into_response()
+        }
+        (None, Some(Some(_))) => {
+            bad_request(format!("at most {MAX_SUGGEST_LINKS} links per request"))
+        }
+        _ => bad_request("give either url or urls, not null".into()),
+    }
+}
+
+fn bad_request(error: String) -> Response {
+    (StatusCode::BAD_REQUEST, Json(ErrorResponse { error })).into_response()
+}
+
+async fn suggest_one(state: &AppState, url: &str) -> Json<SuggestPluginResponse> {
     // The registry the server is configured with (URL and signature
     // verification), the same one installs and updates use.
     let index = state.plugin_updater.load_index().await;
 
     if let Ok(index) = index
-        && let Some(plugin) =
-            krake_plugin_runtime::registry::suggest_plugin_for_url(&index, &req.url)
+        && let Some(plugin) = krake_plugin_runtime::registry::suggest_plugin_for_url(&index, url)
     {
         return Json(SuggestPluginResponse {
             found: true,

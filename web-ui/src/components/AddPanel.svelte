@@ -6,6 +6,7 @@
   import { MAX_LIST_BYTES, prepareLinkList } from "../lib/linkListImport";
   import { chooseTextFile, listProblem, queueAndReport, translator } from "../lib/linkListActions";
   import Icon from "@amigo-labs/krake-ui/components/Icon.svelte";
+  import PluginSuggestions from "./PluginSuggestions.svelte";
 
   let urlInput = $state("");
   let loading = $state(false);
@@ -146,6 +147,8 @@
         {tr($locale, "add.links_invalid", { count: invalidCount })}
       </p>
     {/if}
+
+    <PluginSuggestions links={validLinks} />
 
     <button
       onclick={handleSubmit}
