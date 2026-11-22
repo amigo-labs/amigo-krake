@@ -1,4 +1,5 @@
 // REST + WebSocket client for the Krake API
+import type { LinkSuggestion } from "./pluginSuggest";
 import type { Download } from "./stores";
 import { authRequired, setupRequired, wsConnected } from "./stores";
 
@@ -71,6 +72,9 @@ export const reorderQueue = (ids: string[]) => api<void>("PATCH", "/queue/reorde
 export const getHistory = () => api<Download[]>("GET", "/history");
 export const clearHistory = () => api<void>("DELETE", "/history");
 export const getPlugins = () => api<Plugin[]>("GET", "/plugins");
+/** Plugins that handle `urls` better than the installed ones (plugin-suggest-on-add). */
+export const suggestPlugins = (urls: string[]) =>
+  api<{ suggestions: LinkSuggestion[] }>("POST", "/plugins/suggest", { urls }).then((r) => r.suggestions);
 export const setPluginEnabled = (id: string, enabled: boolean) =>
   api<void>("PATCH", `/plugins/${encodeURIComponent(id)}`, { enabled });
 export interface MarketplaceEntry {
