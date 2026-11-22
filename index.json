@@ -22,6 +22,92 @@
       }
     },
     {
+      "id": "bunkr",
+      "name": "Bunkr",
+      "version": "1.0.0",
+      "description": "Downloads bunkr albums and files",
+      "author": "amigo-labs",
+      "url_pattern": "https?://(?:app\\.)?(?:bunkr\\.ac|bunkr\\.ci|bunkr\\.cr|bunkr\\.fi|bunkr\\.ph|bunkr\\.pk|bunkr\\.ps|bunkr\\.si|bunkr\\.sk|bunkr\\.ws|bunkr\\.black|bunkr\\.red|bunkr\\.media|bunkr\\.site|bunkr\\.su|bunkr\\.ru|bunkr\\.la|bunkr\\.is|bunkr\\.to|bunkr\\.ax|bunkr\\.cat|bunkrr\\.su|bunkrr\\.ru)/(?:a|f|v|i|d)/[^/?#]+",
+      "min_app_version": null,
+      "sha256": "f8ab7db9381ac541c275cf5de4e5e5bbb4061c00d1ebec49acfe88af064caa7b",
+      "download_url": "https://krake-registry.amigo-labs.dev/plugins/bunkr/1.0.0/plugin.ts",
+      "tags": [
+        "hoster"
+      ],
+      "api_version": 1,
+      "permissions": {
+        "domains": [
+          "bunkr.ac",
+          "bunkr.ci",
+          "bunkr.cr",
+          "bunkr.fi",
+          "bunkr.ph",
+          "bunkr.pk",
+          "bunkr.ps",
+          "bunkr.si",
+          "bunkr.sk",
+          "bunkr.ws",
+          "bunkr.black",
+          "bunkr.red",
+          "bunkr.media",
+          "bunkr.site",
+          "bunkr.su",
+          "bunkr.ru",
+          "bunkr.la",
+          "bunkr.is",
+          "bunkr.to",
+          "bunkr.ax",
+          "bunkr.cat",
+          "bunkrr.su",
+          "bunkrr.ru",
+          "app.bunkr.ac",
+          "app.bunkr.ci",
+          "app.bunkr.cr",
+          "app.bunkr.fi",
+          "app.bunkr.ph",
+          "app.bunkr.pk",
+          "app.bunkr.ps",
+          "app.bunkr.si",
+          "app.bunkr.sk",
+          "app.bunkr.ws",
+          "app.bunkr.black",
+          "app.bunkr.red",
+          "app.bunkr.media",
+          "app.bunkr.site",
+          "app.bunkr.su",
+          "app.bunkr.ru",
+          "app.bunkr.la",
+          "app.bunkr.is",
+          "app.bunkr.to",
+          "app.bunkr.ax",
+          "app.bunkr.cat",
+          "app.bunkrr.su",
+          "app.bunkrr.ru",
+          "apidl.bunkr.ru"
+        ]
+      }
+    },
+    {
+      "id": "filester",
+      "name": "Filester",
+      "version": "1.0.0",
+      "description": "Downloads filester.me files and folders",
+      "author": "amigo-labs",
+      "url_pattern": "https?://(?:www\\.)?filester\\.me/(?:d|f)/[A-Za-z0-9_-]+",
+      "min_app_version": null,
+      "sha256": "8f11b64912d1af740f311f491763e55aabdc9ad1d4eb2025887bcf44b1fb2fd5",
+      "download_url": "https://krake-registry.amigo-labs.dev/plugins/filester/1.0.0/plugin.ts",
+      "tags": [
+        "hoster"
+      ],
+      "api_version": 1,
+      "permissions": {
+        "domains": [
+          "filester.me"
+        ]
+      }
+    },
+    {
       "id": "generic-http",
       "name": "Generic HTTP",
       "version": "5.0.0",
@@ -36,6 +122,26 @@
       ],
       "api_version": 1,
       "permissions": null
+    },
+    {
+      "id": "gofile",
+      "name": "Gofile",
+      "version": "1.0.0",
+      "description": "Downloads gofile.io folders (every file, subfolders one level deep)",
+      "author": "amigo-labs",
+      "url_pattern": "https?://(?:www\\.)?gofile\\.io/d/[A-Za-z0-9-]+",
+      "min_app_version": null,
+      "sha256": "a05f869c1ddec7399999e3557dd3cfd479ce162960c92f369f6adb5fd8ede1de",
+      "download_url": "https://krake-registry.amigo-labs.dev/plugins/gofile/1.0.0/plugin.ts",
+      "tags": [
+        "hoster"
+      ],
+      "api_version": 1,
+      "permissions": {
+        "domains": [
+          "api.gofile.io"
+        ]
+      }
     },
     {
       "id": "premiumize",
