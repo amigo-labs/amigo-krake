@@ -1539,6 +1539,8 @@ async fn suggest_ac08_bad_lists_are_refused() {
         serde_json::json!({ "urls": [1, 2] }),
         serde_json::json!({ "urls": "https://hoster.test/a" }),
         serde_json::json!({ "urls": null }),
+        serde_json::json!({ "url": "https://hoster.test/a", "urls": null }),
+        serde_json::json!({ "url": null, "urls": ["https://hoster.test/a"] }),
         serde_json::json!({ "url": "https://hoster.test/a", "urls": ["https://hoster.test/a"] }),
         serde_json::json!({}),
     ];

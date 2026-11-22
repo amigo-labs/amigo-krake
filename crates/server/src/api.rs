@@ -590,10 +590,24 @@ async fn update_plugin(
 
 /// `{"url": ...}` (one link, plugin-registry AC-17) or `{"urls": [...]}`
 /// (a list, plugin-suggest-on-add).
+///
+/// A field given as `null` counts as given, so `{"url": .., "urls": null}`
+/// is refused instead of read as the single form (AC-08).
 #[derive(Deserialize)]
 struct SuggestPluginRequest {
-    url: Option<String>,
-    urls: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "given")]
+    url: Option<Option<String>>,
+    #[serde(default, deserialize_with = "given")]
+    urls: Option<Option<Vec<String>>>,
+}
+
+/// `Some(..)` for a field present in the body, `null` included.
+fn given<'de, D, T>(d: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    T::deserialize(d).map(Some)
 }
 
 #[derive(Serialize)]
@@ -617,8 +631,8 @@ async fn suggest_plugin(
     Json(req): Json<SuggestPluginRequest>,
 ) -> Response {
     match (req.url, req.urls) {
-        (Some(url), None) => suggest_one(&state, &url).await.into_response(),
-        (None, Some(urls)) if urls.len() <= MAX_SUGGEST_LINKS => {
+        (Some(Some(url)), None) => suggest_one(&state, &url).await.into_response(),
+        (None, Some(Some(urls))) if urls.len() <= MAX_SUGGEST_LINKS => {
             // An unavailable or unverified registry leaves only the
             // suggestions that need none (AC-07).
             let index = state.plugin_updater.load_index().await.ok();
@@ -630,8 +644,10 @@ async fn suggest_plugin(
             );
             Json(SuggestLinksResponse { suggestions }).into_response()
         }
-        (None, Some(_)) => bad_request(format!("at most {MAX_SUGGEST_LINKS} links per request")),
-        _ => bad_request("give either url or urls".into()),
+        (None, Some(Some(_))) => {
+            bad_request(format!("at most {MAX_SUGGEST_LINKS} links per request"))
+        }
+        _ => bad_request("give either url or urls, not null".into()),
     }
 }
 
