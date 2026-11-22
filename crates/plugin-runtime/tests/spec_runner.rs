@@ -106,3 +106,53 @@ async fn test_youtube_plugin_spec_passes() {
         );
     }
 }
+
+/// Run a plugin's spec file and require every test to pass. For specs that
+/// never touch the network (their HTTP calls go to in-spec fakes).
+async fn assert_offline_spec_passes(plugin_id: &str) {
+    let loader =
+        PluginLoader::new(shipped_plugins_dir(), SandboxLimits::default()).expect("loader init");
+    loader.discover().await.expect("discover");
+
+    let results = loader
+        .run_spec(plugin_id)
+        .await
+        .unwrap_or_else(|e| panic!("run_spec for {plugin_id}: {e}"));
+
+    let failures: Vec<_> = results
+        .results
+        .iter()
+        .filter(|r| !r.passed || r.skipped)
+        .collect();
+    assert!(
+        failures.is_empty(),
+        "{plugin_id} spec failures or skips: {failures:#?}"
+    );
+    assert!(
+        results.passed > 0,
+        "{plugin_id} spec should run at least one test, got {results:?}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_xfilesharing_plugin_spec_passes() {
+    assert_offline_spec_passes("xfilesharing").await;
+}
+
+/// `docs/specs/plugin-packages.md` AC-10, AC-11, AC-16.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_gofile_plugin_spec_passes() {
+    assert_offline_spec_passes("gofile").await;
+}
+
+/// `docs/specs/plugin-packages.md` AC-12, AC-13, AC-16.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_bunkr_plugin_spec_passes() {
+    assert_offline_spec_passes("bunkr").await;
+}
+
+/// `docs/specs/plugin-packages.md` AC-14, AC-15, AC-16.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_filester_plugin_spec_passes() {
+    assert_offline_spec_passes("filester").await;
+}

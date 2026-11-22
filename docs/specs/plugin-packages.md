@@ -197,13 +197,13 @@ Terms used below:
 | AC-07 | `ac06_ac07_entries_the_same_plugin_claims_are_resolved_one_level` (crates/core/tests/plugin_package_tests.rs) | built |  |
 | AC-08 | `ac08_an_empty_package_or_nothing_queueable_fails_the_add` (crates/core/tests/plugin_package_tests.rs) | built |  |
 | AC-09 | `ac09_already_queued_entries_report_the_existing_id` (crates/core/tests/plugin_package_tests.rs), `ac09_add_answers_every_id_of_a_package_in_order` (crates/server/tests/api_tests.rs) | built |  |
-| AC-10 |      | open   |        |
-| AC-11 |      | open   |        |
-| AC-12 |      | open   |        |
-| AC-13 |      | open   |        |
-| AC-14 |      | open   |        |
-| AC-15 |      | open   |        |
-| AC-16 |      | open   |        |
+| AC-10 | `test_gofile_plugin_spec_passes` (crates/plugin-runtime/tests/spec_runner.rs) running plugins/hosters/gofile/plugin.spec.ts ("AC-10: …" tests) | built |  |
+| AC-11 | `test_gofile_plugin_spec_passes` (crates/plugin-runtime/tests/spec_runner.rs) ("AC-11: …" tests) | built |  |
+| AC-12 | `test_bunkr_plugin_spec_passes` (crates/plugin-runtime/tests/spec_runner.rs) running plugins/hosters/bunkr/plugin.spec.ts ("AC-12: …") | built |  |
+| AC-13 | `test_bunkr_plugin_spec_passes` (crates/plugin-runtime/tests/spec_runner.rs) ("AC-13: …" tests, encrypted and plain answers) | built |  |
+| AC-14 | `test_filester_plugin_spec_passes` (crates/plugin-runtime/tests/spec_runner.rs) running plugins/hosters/filester/plugin.spec.ts ("AC-14: …") | built |  |
+| AC-15 | `test_filester_plugin_spec_passes` (crates/plugin-runtime/tests/spec_runner.rs) ("AC-15: …") | built |  |
+| AC-16 | `test_gofile_plugin_spec_passes`, `test_bunkr_plugin_spec_passes`, `test_filester_plugin_spec_passes` (crates/plugin-runtime/tests/spec_runner.rs) ("AC-16: …" pattern tests and the host check in every resolve test) | built |  |
 
 ## Decisions
 

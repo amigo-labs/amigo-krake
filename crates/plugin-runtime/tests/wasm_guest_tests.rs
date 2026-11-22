@@ -110,6 +110,18 @@ impl Native {
         serde_json::from_value(value.clone()).unwrap()
     }
 
+    /// Whether the native engine was recorded loading `source`. It was
+    /// recorded once, for the plugins shipped then; plugins added or changed
+    /// since have no native answer and are covered by `spec_runner.rs`.
+    fn recorded(&self, source: &str) -> bool {
+        use sha2::Digest;
+        let prefix = format!(
+            "{}|load||",
+            hex::encode(&sha2::Sha256::digest(source.as_bytes())[..8])
+        );
+        self.answers.keys().any(|k| k.starts_with(&prefix))
+    }
+
     /// The parent-routed host calls the native engine made.
     fn calls(&self) -> Vec<(String, HostArgs)> {
         self.answer("calls", "")
@@ -306,14 +318,23 @@ fn guest_imports_only_what_the_executor_defines() {
 #[test]
 fn manifests_of_shipped_plugins_match_the_native_engine() {
     let engine = engine();
+    let mut compared = 0;
     for path in shipped_plugins() {
         let source = wrap_file(&path);
         let dispatch = Arc::new(Recorder::default());
         let wasm = manifest(&wasm_with(&engine, dispatch.clone()), &source);
+        assert!(wasm[0].starts_with("ok"), "{}: {}", path.display(), wasm[0]);
+        if !native().recorded(&source) {
+            continue;
+        }
         let native = manifest(&native(), &source);
         assert_eq!(wasm, native, "{}", path.display());
-        assert!(wasm[0].starts_with("ok"), "{}: {}", path.display(), wasm[0]);
+        compared += 1;
     }
+    assert!(
+        compared >= 7,
+        "expected the recorded plugins, compared {compared}"
+    );
 }
 
 #[test]
@@ -404,6 +425,9 @@ fn shipped_plugin_specs_give_the_native_results() {
             continue;
         }
         let source = wrap_file(&plugin);
+        if !native().recorded(&source) {
+            continue;
+        }
         let spec = spec_source(&spec);
         let wasm = wasm_with(&engine, Arc::new(Recorder::default()));
         wasm.load(&source).unwrap();

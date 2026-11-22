@@ -232,7 +232,10 @@ amigo-krake/
 │   ├── types/
 │   │   └── krake.d.ts           # TypeScript type definitions
 │   ├── hosters/
+│   │   ├── bunkr/
+│   │   ├── filester/
 │   │   ├── generic-http/
+│   │   ├── gofile/
 │   │   └── xfilesharing/
 │   ├── multi-hosters/           # Premium aggregator plugins
 │   │   ├── alldebrid/
