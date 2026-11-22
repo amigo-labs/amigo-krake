@@ -3421,7 +3421,7 @@ dependencies = [
 
 [[package]]
 name = "krake-cli"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "anyhow",
  "axum",
@@ -3444,7 +3444,7 @@ dependencies = [
 
 [[package]]
 name = "krake-core"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -3483,7 +3483,7 @@ dependencies = [
 
 [[package]]
 name = "krake-desktop"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "async-trait",
  "krake-core",
@@ -3504,7 +3504,7 @@ dependencies = [
 
 [[package]]
 name = "krake-extractors"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "regex",
  "reqwest 0.12.28",
@@ -3519,7 +3519,7 @@ dependencies = [
 
 [[package]]
 name = "krake-plugin-runtime"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "aes 0.8.4",
  "cbc",
@@ -3555,7 +3555,7 @@ dependencies = [
 
 [[package]]
 name = "krake-server"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "anyhow",
  "argon2",

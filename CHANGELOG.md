@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.12](https://github.com/amigo-labs/amigo-krake/compare/v0.1.11...v0.1.12) (2026-11-22)
+
+
+### Bug Fixes
+
+* **tauri:** turn the bundler back on so releases get installers ([ee14bfa](https://github.com/amigo-labs/amigo-krake/commit/ee14bfa86fbf60599dc256ca790434f22b6951e8))
+* **tauri:** turn the bundler back on so releases get installers ([a6030b0](https://github.com/amigo-labs/amigo-krake/commit/a6030b073ab05014c6a17edac611c8912e35b2b0))
+
 ## [0.1.11](https://github.com/amigo-labs/amigo-krake/compare/v0.1.10...v0.1.11) (2026-11-22)
 
 
