@@ -137,8 +137,24 @@ describe("About section (AC-30)", () => {
 describe("core-update banner (AC-18)", () => {
   it("AC-18 offers the Update button for an available update", () => {
     expect(bannerView(check(), null)).toEqual({ kind: "offer", from: "1.0.0", to: "1.1.0" });
-    // A plain server or Docker keeps its button whatever can_self_update says.
-    expect(bannerView(check({ distribution: "Docker", can_self_update: false }), null).kind).toBe("offer");
+  });
+
+  it("shows the image-pull hint instead of the button in Docker", () => {
+    // Docker cannot replace itself: the button could only fail with
+    // "Self-update not supported for this distribution".
+    expect(bannerView(check({ distribution: "Docker", can_self_update: false }), null)).toEqual({
+      kind: "docker",
+      from: "1.0.0",
+      to: "1.1.0",
+    });
+  });
+
+  it("shows a hint instead of the button when the release has no download for this server yet", () => {
+    expect(bannerView(check({ distribution: "Server", can_self_update: false }), null)).toEqual({
+      kind: "unavailable",
+      from: "1.0.0",
+      to: "1.1.0",
+    });
   });
 
   it("AC-18 shows the package-manager hint instead of the button for deb/rpm", () => {
