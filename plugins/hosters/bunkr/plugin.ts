@@ -17,7 +17,7 @@ const API_URL = "https://" + API_HOST + "/api/_001_v2";
 const DL_ROOT = "https://get.bunkrr.su";
 
 function hostAlternation(): string {
-    return BUNKR_HOSTS.map(h => h.replace(/\./g, "\\.")).join("|");
+    return BUNKR_HOSTS.map(h => h.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
 }
 
 function rootOf(url: string): string {
