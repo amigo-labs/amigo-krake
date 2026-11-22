@@ -55,3 +55,4 @@ config.toml
 crates/plugin-guest/target/
 tauri/binaries/
 tauri/gen/
+.claude/worktrees/
