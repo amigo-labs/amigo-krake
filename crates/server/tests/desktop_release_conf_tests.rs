@@ -37,6 +37,13 @@ fn minisign_key_id(tauri_pubkey: &str) -> String {
 }
 
 #[test]
+fn ac22_the_bundler_is_active() {
+    // Tauri 2 defaults `bundle.active` to false: without it `cargo tauri
+    // build` builds the app and silently produces no installer at all.
+    assert_eq!(conf()["bundle"]["active"], true);
+}
+
+#[test]
 fn ac19_the_bundle_creates_updater_artifacts() {
     assert_eq!(conf()["bundle"]["createUpdaterArtifacts"], true);
 }
