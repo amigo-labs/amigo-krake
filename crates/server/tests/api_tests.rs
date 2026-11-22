@@ -112,6 +112,79 @@ async fn test_add_download_returns_created() {
     assert!(!body["id"].as_str().unwrap().is_empty());
 }
 
+/// Resolves one fixed album URL to three files.
+struct AlbumResolver;
+
+#[async_trait::async_trait]
+impl krake_core::protocol::UrlResolver for AlbumResolver {
+    async fn resolve(&self, url: &str) -> Option<krake_core::protocol::ResolvedPackage> {
+        (url == "https://example.com/album/1").then(|| krake_core::protocol::ResolvedPackage {
+            resolver: "album".into(),
+            name: "Album".into(),
+            downloads: ["a", "b", "c"]
+                .iter()
+                .map(|n| krake_core::protocol::ResolvedDownload {
+                    url: format!("https://cdn.example/{n}"),
+                    filename: Some(format!("{n}.bin")),
+                    filesize: None,
+                    protocol: krake_core::protocol::Protocol::Http,
+                    headers: Default::default(),
+                })
+                .collect(),
+        })
+    }
+}
+
+#[tokio::test]
+async fn ac09_add_answers_every_id_of_a_package_in_order() {
+    let config = Config {
+        max_concurrent_downloads: 0,
+        ..Config::default()
+    };
+    let state = krake_server::build_test_state_with_resolvers(
+        config,
+        vec![std::sync::Arc::new(AlbumResolver)],
+    );
+    let coordinator = state.coordinator.clone();
+    let app = krake_server::build_test_router(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+    let resp = test_client()
+        .post(format!("{}/api/v1/downloads", base_url(addr)))
+        .json(&serde_json::json!({ "url": "https://example.com/album/1" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 201);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    let ids: Vec<String> = serde_json::from_value(body["ids"].clone()).unwrap();
+    assert_eq!(ids.len(), 3);
+    assert_eq!(body["id"], ids[0]);
+    let mut files = Vec::new();
+    for id in &ids {
+        let row = coordinator
+            .storage()
+            .get_download(id)
+            .await
+            .unwrap()
+            .unwrap();
+        files.push(row.filename.unwrap());
+    }
+    assert_eq!(files, ["a.bin", "b.bin", "c.bin"]);
+
+    // A plain URL still answers one id in both fields.
+    let resp = test_client()
+        .post(format!("{}/api/v1/downloads", base_url(addr)))
+        .json(&serde_json::json!({ "url": "https://example.com/file.zip" }))
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["ids"], serde_json::json!([body["id"].clone()]));
+}
+
 #[tokio::test]
 async fn test_add_download_rejects_ssrf_targets() {
     // The main REST download path must apply the same SSRF guard as

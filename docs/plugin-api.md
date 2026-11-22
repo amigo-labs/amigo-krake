@@ -151,7 +151,26 @@ interface DownloadInfo {
     wait_seconds: number | null;
     mirrors: string[];
 }
+```
 
+How Krake queues a package (`docs/specs/plugin-packages.md`):
+
+- **Every entry** becomes a download, in package order. A package with more
+  than one entry is saved in a folder named after `name` (made safe as a
+  file name; the plugin id when `name` is empty).
+- **`headers` and `cookies`** are sent with every request of that entry's
+  transfer, also on retries and after a restart. Cookies join a `Cookie`
+  header into one. `Host`, `Content-Length`, `Range`, `Transfer-Encoding` and
+  `Connection` are Krake's own and are ignored. They are never shown in the
+  API or kept in the history.
+- **Folders of pages:** an entry whose URL your plugin would handle itself
+  (an album returning file-page URLs) is resolved by your plugin once more,
+  in a call of its own with its own HTTP budget. What that returns is queued
+  as is; entries your plugin would handle a third time are skipped. Use this
+  when one call cannot fetch every file within the 20-request budget.
+- An empty package fails the add.
+
+```typescript
 interface PostProcessContext {
     download_id: string;
     filename: string;

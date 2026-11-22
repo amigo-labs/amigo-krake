@@ -51,8 +51,31 @@ pub fn build_test_state_with_registry(
     config: Config,
     registry_config: krake_plugin_runtime::registry::RegistryConfig,
 ) -> api::AppState {
+    build_test_state_full(config, registry_config, Vec::new())
+}
+
+/// [`build_test_state`] with URL resolvers wired into the coordinator (for
+/// tests of what an add queues).
+pub fn build_test_state_with_resolvers(
+    config: Config,
+    resolvers: Vec<Arc<dyn krake_core::protocol::UrlResolver>>,
+) -> api::AppState {
+    let mut registry_config = krake_plugin_runtime::registry::RegistryConfig::for_index(
+        config.update.plugin_registry_url.clone(),
+        false,
+    );
+    registry_config.cache_path = None;
+    build_test_state_full(config, registry_config, resolvers)
+}
+
+fn build_test_state_full(
+    config: Config,
+    registry_config: krake_plugin_runtime::registry::RegistryConfig,
+    resolvers: Vec<Arc<dyn krake_core::protocol::UrlResolver>>,
+) -> api::AppState {
     let storage = Storage::open_memory().expect("Failed to open in-memory storage");
-    let coordinator = Coordinator::new(config.clone(), storage);
+    let mut coordinator = Coordinator::new(config.clone(), storage);
+    coordinator.set_resolvers(resolvers);
     let coordinator = Arc::new(coordinator);
 
     let http_client = reqwest::Client::builder()
