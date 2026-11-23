@@ -80,6 +80,26 @@ test("AC-14: a file link resolves to its download URL and name", () => {
     assertDeclared(seen);
 });
 
+test("filester.si links are the same site and resolve through filester.me", () => {
+    const re = new RegExp(plugin.urlPattern);
+    assert(re.test("https://filester.si/d/7ZmUjr1"), "filester.si file link");
+    assert(re.test("https://filester.si/f/Folder1"), "filester.si folder link");
+    assert(!re.test("https://cache1.filester.si/files/aB3/a.png?download=true"), "cache link");
+    const seen = install({
+        "GET https://filester.me/d/7ZmUjr1": () => ({ status: 200, body: FILE_PAGE }),
+        "POST https://filester.me/api/public/download": (req) => {
+            assertEqual(JSON.parse(req.body!).file_slug, "7ZmUjr1");
+            return { status: 200, body: JSON.stringify({ download_url: "/files/7ZmUjr1/a.png" }) };
+        },
+        "GET https://filester.me/f/Folder1": () => ({ status: 200, body: folderPage([["s1", "one.png", 1]], false) }),
+    });
+    const pkg = plugin.resolve("https://filester.si/d/7ZmUjr1");
+    assertEqual(pkg.downloads[0].url, "https://cache1.filester.me/files/7ZmUjr1/a.png?download=true");
+    const folder = plugin.resolve("https://filester.si/f/Folder1");
+    assertEqual(folder.downloads[0].url, "https://filester.me/d/s1");
+    assertDeclared(seen);
+});
+
 test("AC-14: an API refusal fails with its reason", () => {
     install({
         "GET https://filester.me/d/priv": () => ({ status: 200, body: FILE_PAGE }),

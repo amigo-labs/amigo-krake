@@ -1,5 +1,5 @@
 ---
-status: implemented
+status: todo
 created: 2026-11-22
 size: M
 design: [AGENTS.md "Plugin-System" (Plugin-Interface, DownloadInfo), AGENTS.md "Core-Features" (Queue & Scheduler), docs/plugin-api.md (resolve, DownloadPackage), docs/architecture.md]
@@ -129,6 +129,9 @@ Terms used below:
   plugin's `urlPattern` matches its own link forms (gofile `/d/`; bunkr
   `/a/`, `/f/`, `/v/`, `/i/`, `/d/` on bunkr domains; filester `/d/`, `/f/`)
   and neither its file servers' direct URLs nor other hosts.
+- [ ] AC-17 (event): When a filester.si file or folder link is added, then the
+  filester plugin resolves it like the same filester.me link, with every
+  request still going to filester.me.
 
 ## Technical notes
 
@@ -204,6 +207,7 @@ Terms used below:
 | AC-14 | `test_filester_plugin_spec_passes` (crates/plugin-runtime/tests/spec_runner.rs) running plugins/hosters/filester/plugin.spec.ts ("AC-14: …") | verified | b4e0d69 |
 | AC-15 | `test_filester_plugin_spec_passes` (crates/plugin-runtime/tests/spec_runner.rs) ("AC-15: …") | verified | b4e0d69 |
 | AC-16 | `test_gofile_plugin_spec_passes`, `test_bunkr_plugin_spec_passes`, `test_filester_plugin_spec_passes` (crates/plugin-runtime/tests/spec_runner.rs) ("AC-16: …" pattern tests and the host check in every resolve test) | verified | b4e0d69 |
+| AC-17 | `test_filester_plugin_spec_passes` (crates/plugin-runtime/tests/spec_runner.rs) ("filester.si links are the same site …") | open | |
 
 ## Summary
 
@@ -228,3 +232,7 @@ Terms used below:
   in AC-08 and are reported in AC-09; AC-03 names the attempts and the
   headers Krake owns; AC-05 covers WebSocket events; AC-16 is stated as
   what the tests observe.
+- 2026-11-23, bug fix: a filester.si link (`https://filester.si/d/7ZmUjr1`)
+  matched no plugin. filester.si serves the same site as filester.me, so the
+  plugin accepts both domains and keeps sending its requests to filester.me
+  (no new host in `permissions.domains`). Added as AC-17.
