@@ -133,6 +133,34 @@ test("AC-11: a protected folder says password protected", () => {
     assert(resolveError({ status: "error-passwordRequired" }).indexOf("password protected") >= 0, "password");
 });
 
+test("a file with only a directLink is still listed", () => {
+    install({
+        "POST https://api.gofile.io/accounts": () => ({ status: 200, body: JSON.stringify(ACCOUNT) }),
+        "GET https://api.gofile.io/contents/Img1": () => ({
+            status: 200,
+            body: JSON.stringify({
+                status: "ok",
+                data: {
+                    type: "folder",
+                    name: "Pics",
+                    children: {
+                        "p": {
+                            type: "file",
+                            name: "photo.png",
+                            size: 4096,
+                            directLink: "https://store3.gofile.io/download/direct/p/photo.png",
+                        },
+                    },
+                },
+            }),
+        }),
+    });
+    const pkg = plugin.resolve("https://gofile.io/d/Img1");
+    assertEqual(pkg.downloads.length, 1);
+    assertEqual(pkg.downloads[0].url, "https://store3.gofile.io/download/direct/p/photo.png");
+    assertEqual(pkg.downloads[0].filename, "photo.png");
+});
+
 test("an empty folder returns no downloads", () => {
     install({
         "POST https://api.gofile.io/accounts": () => ({ status: 200, body: JSON.stringify(ACCOUNT) }),

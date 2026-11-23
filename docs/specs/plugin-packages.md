@@ -132,6 +132,9 @@ Terms used below:
 - [ ] AC-17 (event): When a filester.si file or folder link is added, then the
   filester plugin resolves it like the same filester.me link, with every
   request still going to filester.me.
+- [ ] AC-18 (event): When a gofile folder lists a file with a `directLink`
+  but no `link`, then the gofile plugin returns that file with the
+  `directLink` as its download URL.
 
 ## Technical notes
 
@@ -208,6 +211,7 @@ Terms used below:
 | AC-15 | `test_filester_plugin_spec_passes` (crates/plugin-runtime/tests/spec_runner.rs) ("AC-15: …") | verified | b4e0d69 |
 | AC-16 | `test_gofile_plugin_spec_passes`, `test_bunkr_plugin_spec_passes`, `test_filester_plugin_spec_passes` (crates/plugin-runtime/tests/spec_runner.rs) ("AC-16: …" pattern tests and the host check in every resolve test) | verified | b4e0d69 |
 | AC-17 | `test_filester_plugin_spec_passes` (crates/plugin-runtime/tests/spec_runner.rs) ("filester.si links are the same site …") | open | |
+| AC-18 | `test_gofile_plugin_spec_passes` (crates/plugin-runtime/tests/spec_runner.rs) ("a file with only a directLink is still listed") | open | |
 
 ## Summary
 
@@ -236,3 +240,9 @@ Terms used below:
   matched no plugin. filester.si serves the same site as filester.me, so the
   plugin accepts both domains and keeps sending its requests to filester.me
   (no new host in `permissions.domains`). Added as AC-17.
+- 2026-11-23, bug fix: a gofile folder with an image
+  (`https://gofile.io/d/t5wDSNoA`) showed no file. The plugin skipped every
+  file without `link`; JDownloader's gofile plugin falls back to
+  `directLink`, and so does this plugin now. Added as AC-18. Not confirmed
+  against the live API (no access from the session), so the user checks the
+  link after the update.
