@@ -70,9 +70,15 @@ function fetchContent(id: string, token: string): GofileReply {
     return parseReply(resp.body, "folder listing");
 }
 
+/** The download URL of a file entry: `link`, or `directLink` when gofile
+ *  sends only that one (as JDownloader's plugin reads it). */
+function fileLink(file: any): string | null {
+    return file.link || file.directLink || null;
+}
+
 function fileEntry(file: any, token: string): DownloadInfo {
     return {
-        url: file.link,
+        url: fileLink(file)!,
         filename: file.name || null,
         filesize: typeof file.size === "number" ? file.size : null,
         chunks_supported: true,
@@ -101,7 +107,7 @@ function folderEntry(folder: any): DownloadInfo {
 module.exports = {
     id: "gofile",
     name: "Gofile",
-    version: "1.0.0",
+    version: "1.0.1",
     apiVersion: 1,
     permissions: { domains: ["api.gofile.io"] },
     description: "Downloads gofile.io folders (every file, subfolders one level deep)",
@@ -142,7 +148,7 @@ module.exports = {
 
         const downloads: DownloadInfo[] = [];
         for (const child of children) {
-            if (child.type === "file" && child.link) {
+            if (child.type === "file" && fileLink(child)) {
                 downloads.push(fileEntry(child, token));
             } else if (child.type === "folder") {
                 downloads.push(folderEntry(child));

@@ -1,9 +1,10 @@
 /// <reference path="../../types/krake.d.ts" />
 
-// filester.me — files (`/d/<slug>`) and folders (`/f/<slug>`). A file page
-// names the file; the public download API returns its path on the cache
-// servers. A folder lists its files over numbered pages; Krake resolves
-// each listed file through this plugin again (one call per file).
+// filester.me (also served as filester.si) — files (`/d/<slug>`) and
+// folders (`/f/<slug>`). A file page names the file; the public download API
+// returns its path on the cache servers. A folder lists its files over
+// numbered pages; Krake resolves each listed file through this plugin again
+// (one call per file).
 
 const ROOT = "https://filester.me";
 const CACHE_ROOT = "https://cache1.filester.me";
@@ -32,7 +33,7 @@ function decodeName(s: string): string {
 }
 
 function slugOf(url: string, kind: string): string {
-    const slug = krake.regexMatch("filester\\.me/" + kind + "/([A-Za-z0-9_-]+)", url);
+    const slug = krake.regexMatch("filester\\.(?:me|si)/" + kind + "/([A-Za-z0-9_-]+)", url);
     if (!slug) throw new Error("filester: not a filester link: " + url);
     return slug;
 }
@@ -121,15 +122,15 @@ function resolveFolder(url: string): DownloadPackage {
 module.exports = {
     id: "filester",
     name: "Filester",
-    version: "1.0.0",
+    version: "1.0.1",
     apiVersion: 1,
     permissions: { domains: ["filester.me"] },
-    description: "Downloads filester.me files and folders",
+    description: "Downloads filester.me / filester.si files and folders",
     author: "amigo-labs",
-    urlPattern: "https?://(?:www\\.)?filester\\.me/(?:d|f)/[A-Za-z0-9_-]+",
+    urlPattern: "https?://(?:www\\.)?filester\\.(?:me|si)/(?:d|f)/[A-Za-z0-9_-]+",
     pluginType: "hoster" as PluginTypeHint,
 
     resolve(url: string): DownloadPackage {
-        return krake.regexTest("filester\\.me/f/", url) ? resolveFolder(url) : resolveFile(url);
+        return krake.regexTest("filester\\.(?:me|si)/f/", url) ? resolveFolder(url) : resolveFile(url);
     },
 } satisfies KrakePlugin;
