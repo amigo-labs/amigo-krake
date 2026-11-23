@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.15](https://github.com/amigo-labs/amigo-krake/compare/v0.1.14...v0.1.15) (2026-11-23)
+
+
+### Bug Fixes
+
+* bump cookie to 0.18.3 for RUSTSEC-2026-0594 ([f7bb687](https://github.com/amigo-labs/amigo-krake/commit/f7bb687afbce72fce925cd4f04b7671077e2f98a))
+* **plugins:** filester.si links and gofile files with only a directLink ([49cde35](https://github.com/amigo-labs/amigo-krake/commit/49cde35e44a352f791d5274a749377b2619dbe35))
+* **plugins:** list gofile files that only carry a directLink ([02ef834](https://github.com/amigo-labs/amigo-krake/commit/02ef834f4cb24d7d48c5752413739cdd257e6137))
+* **plugins:** resolve filester.si links through the filester plugin ([ea3ea9c](https://github.com/amigo-labs/amigo-krake/commit/ea3ea9ce8270cb10fcd11344af6b06ccc11228eb))
+
 ## [0.1.14](https://github.com/amigo-labs/amigo-krake/compare/v0.1.13...v0.1.14) (2026-11-22)
 
 
