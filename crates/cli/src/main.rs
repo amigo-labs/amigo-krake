@@ -1349,27 +1349,16 @@ async fn main() -> anyhow::Result<()> {
                     anyhow::bail!("Plugin file not found: {plugin}");
                 }
 
-                // plugin_dir for discover() must be the root that contains
-                // category dirs (e.g. `plugins/`) or flat plugin dirs.
-                // Given `plugins/extractors/youtube/plugin.ts`, parent is the
-                // plugin dir (`youtube/`), grandparent is the category
-                // (`extractors/`), and great-grandparent is the root (`plugins/`).
-                // We go up to the category level so discover finds the plugin dir.
-                let plugin_parent = path.parent().unwrap_or(std::path::Path::new("."));
-                let plugin_dir = plugin_parent.parent().unwrap_or(plugin_parent);
+                // Load exactly the given file. Discovering its whole folder
+                // would load sibling plugins too and leave the choice to
+                // directory order.
+                let plugin_dir = path.parent().unwrap_or(std::path::Path::new("."));
                 let loader = PluginLoader::new(plugin_dir.to_path_buf(), SandboxLimits::default())
                     .map_err(|e| anyhow::anyhow!("{e}"))?;
-                loader
-                    .discover()
+                let meta = &loader
+                    .load_plugin(path)
                     .await
-                    .map_err(|e| anyhow::anyhow!("{e}"))?;
-
-                let plugins = loader.list_plugins().await;
-                if plugins.is_empty() {
-                    anyhow::bail!("No plugin found in {plugin}");
-                }
-
-                let meta = &plugins[0];
+                    .map_err(|e| anyhow::anyhow!("Failed to load {plugin}: {e}"))?;
                 println!("Plugin: {} v{} ({})", meta.name, meta.version, meta.id);
                 println!("Pattern: {}", meta.url_pattern);
 
