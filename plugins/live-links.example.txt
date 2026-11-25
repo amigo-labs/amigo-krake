@@ -1,0 +1,12 @@
+# Links for the local live test (node scripts/plugin-live-test.mjs).
+# Copy this file to plugins/live-links.txt (git-ignored) and add real links,
+# ideally files you uploaded yourself. One "<plugin> <url>" per line;
+# <plugin> is the plugin's folder name.
+
+# gofile        https://gofile.io/d/<folder-id>
+# bunkr         https://bunkr.cr/a/<album-id>
+# bunkr         https://bunkr.cr/f/<file-id>
+# filester      https://filester.me/d/<file-id>
+# xfilesharing  https://<xfs-host>/<file-code>
+# generic-http  https://example.com/some/page-with-a-download
+# youtube       https://www.youtube.com/watch?v=<video-id>

@@ -56,3 +56,6 @@ crates/plugin-guest/target/
 tauri/binaries/
 tauri/gen/
 .claude/worktrees/
+
+# Local live-test links (scripts/plugin-live-test.mjs)
+plugins/live-links.txt

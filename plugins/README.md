@@ -109,10 +109,10 @@ interface DownloadInfo {
 
 ```bash
 # Run spec file (plugin.spec.ts)
-krake plugins test ./plugins/youtube/plugin.ts
+krake plugins test ./plugins/extractors/youtube/plugin.ts
 
 # Resolve a URL directly
-krake plugins test ./plugins/youtube/plugin.ts https://youtube.com/watch?v=dQw4w9WgXcQ
+krake plugins test ./plugins/extractors/youtube/plugin.ts https://youtube.com/watch?v=dQw4w9WgXcQ
 ```
 
 Spec files use `test()`, `assert()`, `assertEqual()`, `assertNotNull()`:
@@ -129,6 +129,22 @@ test("url pattern", () => {
     assert(new RegExp(plugin.urlPattern).test("https://youtube.com/watch?v=abc"));
 });
 ```
+
+### Live test against real hosters (local only)
+
+Specs stay offline. To check that plugins still work against the real sites,
+keep a list of real links in `plugins/live-links.txt` (git-ignored; start from
+`live-links.example.txt`, one `<plugin-folder> <url>` per line) and run:
+
+```bash
+cargo build -p krake-cli -p krake-plugin-runtime --bin krake --bin krake-plugin-host
+node scripts/plugin-live-test.mjs            # resolve every link
+node scripts/plugin-live-test.mjs --head     # also HEAD every resolved download URL
+node scripts/plugin-live-test.mjs --only gofile
+```
+
+Each link is resolved with `krake plugins test`; nothing is downloaded. The
+script never runs in CI.
 
 ## Host API
 
