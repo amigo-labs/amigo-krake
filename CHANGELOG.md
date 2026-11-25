@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.16](https://github.com/amigo-labs/amigo-krake/compare/v0.1.15...v0.1.16) (2026-11-25)
+
+
+### Bug Fixes
+
+* **cli:** make `krake plugins test` run the plugin it was given ([235d1d3](https://github.com/amigo-labs/amigo-krake/commit/235d1d364bd100d78abb416355c372003e926f0f))
+
 ## [0.1.15](https://github.com/amigo-labs/amigo-krake/compare/v0.1.14...v0.1.15) (2026-11-23)
 
 
