@@ -46,7 +46,6 @@ document read before a login change would otherwise undo it when saved (AC-11).
 - Changing the NZBGet-compatible API credentials (`nzbget_api`) — because they
   are a separate setting with their own field in Settings.
 - `config.toml` edited by hand while the server runs — because every config write already overwrites the file with the server's in-memory state; this feature changes nothing about it.
-- Making config file writes atomic — because a failed write can leave a partial `config.toml` for every config change today; it is a separate fix for all writes, not for this one.
 - A rate limit on the change — because the endpoint checks no secret, so there is nothing to guess.
 - Revoking API tokens or paired devices on a change — because the user chose to
   keep them; they are revoked one by one where they are managed.
@@ -105,7 +104,7 @@ No rate limit beyond the existing ones: the endpoint needs a login (or the
 | Two browser tabs of the same session change the login one after the other | Both succeed; the later change wins; the session stays signed in |
 | Another browser sends its next request after the change | `401`; the UI shows the login page |
 | `KRAKE_SETUP_USER` / `KRAKE_SETUP_PASSWORD` still set at the next start | Ignored as today, because setup is complete; the changed login stays |
-| Saving the config file fails (disk full, read-only) | `500`, the running server keeps the old login, no session is signed out |
+| Saving the config file fails (disk full, read-only) | `500`, the running server and `config.toml` keep the old login, no session is signed out |
 | Two different admin sessions A and B change the login one after the other (`auth_mode` `always`) | A's change signs out B; B's change, arriving after that, gets `401` and changes nothing |
 | Change requested while setup is not complete | Answered like every other API route before setup (`503 setup_required`); the setup wizard creates the login |
 | Username field cleared in the form | Saving is refused in the form and by the server (`invalid_username`) |
@@ -151,3 +150,5 @@ No rate limit beyond the existing ones: the endpoint needs a login (or the
   the principal (AC-08) instead.
 - 2026-11-26: Other browser sessions are signed out, API tokens, paired
   devices and desktop sessions stay — the user's choice.
+- 2026-11-26: Config writes are atomic now (separate fix), so a failed save
+  leaves the old login on disk; the out-of-scope item about it is gone.
