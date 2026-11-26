@@ -13,6 +13,7 @@ import {
   addDownload,
 } from "./api";
 import { addToast } from "./toast";
+import { copyText } from "./clipboard";
 import { crashReport, showFeedbackDialog, ariaAnnouncement, type Download } from "./stores";
 import { tr, type Locale } from "./i18n";
 import { displayName, canPause, canResume, canRetry } from "./download";
@@ -84,6 +85,15 @@ export function createDownloadActions(
     });
   }
 
+  async function copyUrl(): Promise<void> {
+    try {
+      await copyText(get().url);
+      addToast("info", tr(getLocale(), "action.copy_url"));
+    } catch {
+      addToast("error", tr(getLocale(), "action.copy_failed"));
+    }
+  }
+
   return {
     get busy() {
       return busy;
@@ -116,14 +126,7 @@ export function createDownloadActions(
 
     performDelete,
 
-    async copyUrl() {
-      try {
-        await navigator.clipboard.writeText(get().url);
-        addToast("info", tr(getLocale(), "action.copy_url"));
-      } catch {
-        addToast("error", tr(getLocale(), "action.copy_failed"));
-      }
-    },
+    copyUrl,
 
     reportCrash() {
       const d = get();
@@ -138,7 +141,7 @@ export function createDownloadActions(
         {
           label: tr(lang, "action.copy"),
           icon: "copy",
-          action: () => void navigator.clipboard.writeText(d.url),
+          action: () => void copyUrl(),
         },
         {
           label: tr(lang, "action.open_browser"),
