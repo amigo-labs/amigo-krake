@@ -12,7 +12,10 @@
       label?: string;
     } = $props();
 
-  const gradientId = `spark-fill-${crypto.randomUUID().slice(0, 8)}`;
+  // Not `crypto.randomUUID()`: it only exists in secure contexts, and Krake is
+  // often reached over plain HTTP on the LAN.
+  const uid = $props.id();
+  const gradientId = `spark-fill-${uid}`;
 
   let points = $derived(() => {
     if (values.length === 0) return "";
