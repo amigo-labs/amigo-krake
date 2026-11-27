@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.17](https://github.com/amigo-labs/amigo-krake/compare/v0.1.16...v0.1.17) (2026-11-27)
+
+
+### Bug Fixes
+
+* **core:** write config.toml atomically ([e905ffb](https://github.com/amigo-labs/amigo-krake/commit/e905ffbc704a43541e45488084d354b70ce037bc))
+* **ui:** render the speed sparkline over plain HTTP ([4470a26](https://github.com/amigo-labs/amigo-krake/commit/4470a26783a064745fae2069692485a56b0a3a41))
+* web UI over plain HTTP, atomic config writes; spec for changing the login ([f11f9ce](https://github.com/amigo-labs/amigo-krake/commit/f11f9ce6262373835375c31c5382179ffbded0fe))
+* **web-ui:** copy a download's URL over plain HTTP ([5874f46](https://github.com/amigo-labs/amigo-krake/commit/5874f4695fc17f008c7eb8ae996f9e68a3f63a67))
+
 ## [0.1.16](https://github.com/amigo-labs/amigo-krake/compare/v0.1.15...v0.1.16) (2026-11-25)
 
 
