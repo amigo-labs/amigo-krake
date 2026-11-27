@@ -8,6 +8,7 @@ notes for Krake. The workflow is in `AGENTS.md`, "Spec-driven workflow".
 | # | Spec | Status | Depends on |
 | - | ---- | ------ | ---------- |
 | 2 | [desktop-app](desktop-app.md) | todo | — (three PRs: P1 embedded server, P2 tray, P3 updater, release and update choice) |
+| 3 | [change-credentials](change-credentials.md) | todo | — |
 
 ## Done
 

@@ -548,11 +548,22 @@ impl Config {
         let content = toml::to_string_pretty(self)
             .map_err(|e| crate::Error::Other(format!("Failed to serialize config: {e}")))?;
 
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
+        let parent = match path.parent() {
+            Some(p) if !p.as_os_str().is_empty() => p,
+            _ => Path::new("."),
+        };
+        std::fs::create_dir_all(parent)?;
 
-        std::fs::write(path, content)?;
+        // Write a temporary file next to the config and rename it over the
+        // old one: a save that dies halfway (crash, full disk) leaves the old
+        // config intact, and readers never see a half-written file.
+        let mut tmp = tempfile::NamedTempFile::new_in(parent)?;
+        std::io::Write::write_all(&mut tmp, content.as_bytes())?;
+        if let Ok(meta) = std::fs::metadata(path) {
+            tmp.as_file().set_permissions(meta.permissions())?;
+        }
+        tmp.as_file().sync_all()?;
+        tmp.persist(path).map_err(|e| e.error)?;
         info!("Config saved to {}", path.display());
         Ok(())
     }
@@ -561,6 +572,51 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_reader_never_sees_a_half_written_config() {
+        // A save that dies halfway (crash, full disk) must not leave a broken
+        // config.toml behind. Observable without a crash: a concurrent reader
+        // only ever finds the old or the new file, never a truncated one.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        let versions: Vec<Config> = ["a", "b"]
+            .iter()
+            .map(|c| {
+                let mut config = Config::default();
+                config.server.admin_username = Some(c.repeat(1024 * 1024));
+                config
+            })
+            .collect();
+        let expected: Vec<String> = versions
+            .iter()
+            .map(|c| toml::to_string_pretty(c).unwrap())
+            .collect();
+        versions[0].save(&path).unwrap();
+
+        let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let reader = {
+            let (done, path) = (done.clone(), path.clone());
+            std::thread::spawn(move || {
+                let mut torn = 0;
+                while !done.load(std::sync::atomic::Ordering::Relaxed) {
+                    let seen = std::fs::read_to_string(&path).unwrap_or_default();
+                    if !expected.contains(&seen) {
+                        torn += 1;
+                    }
+                }
+                torn
+            })
+        };
+        for i in 0..30 {
+            versions[i % 2].save(&path).unwrap();
+        }
+        done.store(true, std::sync::atomic::Ordering::Relaxed);
+        assert_eq!(reader.join().unwrap(), 0, "reader saw a partial config");
+        // No temporary file is left next to the config.
+        let names: Vec<_> = std::fs::read_dir(dir.path()).unwrap().collect();
+        assert_eq!(names.len(), 1);
+    }
 
     #[test]
     fn auth_mode_from_env_is_never_read_from_the_file() {
